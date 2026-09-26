@@ -49,21 +49,42 @@ Those three are the project. Everything else elaborates them.
 
 ## `stacks/` — per-technology specifications
 
-**All stubs.** `stacks/react/` and `stacks/angular/` are Phase 3; `stacks/nodejs/` and
-`stacks/springboot/` are Phase 4. See
-[phased-implementation-plan.md](./shared/phased-implementation-plan.md).
+| Stack | Status |
+|-------|--------|
+| `stacks/react/` | ✅ **Written** (Phase 3) — 12 documents |
+| `stacks/angular/` | ✅ **Written** (Phase 3) — 12 documents |
+| `stacks/nodejs/` | ⬜ Stubs — Phase 4 |
+| `stacks/springboot/` | ⬜ Stubs — Phase 4 |
+
+See [phased-implementation-plan.md](./shared/phased-implementation-plan.md) for what each
+phase delivers.
 
 Ten documents common to all four stacks:
 
-`architecture-specification.md` · `coding-standards.md` · `testing-standards.md` ·
-`error-handling.md` · `security-implementation.md` · `logging-observability.md` ·
-`environment-setup-guide.md` · `devops-pipeline.md` · `dependency-policy.md` ·
-`module-registry.md`
+| Document | Holds |
+|----------|-------|
+| `architecture-specification.md` | Folder layout, routing, the API client layer, build tooling |
+| `coding-standards.md` | Language and framework conventions, naming, what is forbidden |
+| `testing-standards.md` | Test approach per layer, and **what these suites do not cover** |
+| `error-handling.md` | Problem-code → user-facing message mapping |
+| `security-implementation.md` | Where each policy control sits, and what must never reappear |
+| `logging-observability.md` | Console logging and redaction. Deliberately thin |
+| `environment-setup-guide.md` | Clone to running, literally |
+| `devops-pipeline.md` | This stack's CI job |
+| `dependency-policy.md` | The approved set, the prohibited set, and how to decide |
+| `module-registry.md` | Inventory of modules and who owns what |
 
 Two more in the frontend stacks only:
 
-`ui-specifications.md` — screen-by-screen, and the document that keeps the two clients from
-diverging · `state-management.md`
+| Document | Holds |
+|----------|-------|
+| `ui-specifications.md` | **Screen by screen, S0–S15.** Sections 1–2 are byte-identical between the React and Angular files — any diff is a defect. Section 3 holds per-stack notes |
+| `state-management.md` | Server-state, form, and session state. **The one place the two frontends differ in substance**: TanStack Query v5 for React, NgRx SignalStore for Angular |
+
+Two documents are held to cross-stack identity rather than merely consistency:
+`ui-specifications.md` (sections 1–2) and `error-handling.md` (sections 1–4, so a guest sees
+the same message text in either client). Both are built from one shared body, and a CI diff
+of those sections is the frontend analogue of the OpenAPI diff that guards the backends.
 
 Rule for these: a stack document may say **how** its technology satisfies a shared
 requirement. It may not restate or contradict the requirement.

@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0 (skeleton), 1 (sessions), 2 (catalogue), 3 (availability) done, Spring Boot only |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-5 done (skeleton, sessions, catalogue, availability, booking, reservation management), Spring Boot only; two structural refactors also done |
 | 7 | Frontend implementation | ⬜ |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -479,6 +479,79 @@ plan exists).
 No contract or migration mismatch was found this step — `rooms` and `rate_plans` matched what
 Step 2's already-applied `V001` implied.
 
+### Step 4 (booking: POST /reservations) — done 2026-09-27, Spring Boot only
+
+`hotelapp-server-springboot@7dc2e1b`. "The central feature": allocation, dummy payment, and the
+no-overbooking exclusion constraint under real concurrency. `mvn verify`: 52 IT tests + 2 unit
+tests, 0 failures, 0 errors — added `ReservationIT` (18) on top of Step 3's suite.
+
+Three judgment calls, all documented in code: confirmation-number scheme (`HA` + 8-char Crockford
+base32 via CSPRNG, in `ConfirmationNumberGenerator` — correctly kept out of `domain/` since it's
+non-deterministic, not a pure function, despite being small); payment-decline check runs before
+allocation (a card known to decline should never hold a room); idempotency implemented as an
+**in-process cache only**, explicitly not durable across restarts or across backends — an accepted
+demo-scope limitation, stated rather than silently presented as complete.
+
+Did not close the date half of Step 0/2's carry-forward requirement despite `checkInDate`/
+`checkOutDate` now being persisted and returned — closed instead by Step 5, below.
+
+### Architectural corrections found during Phase 6 (2026-09-27)
+
+Two package-layout mistakes were caught by inspecting the generated code, not by re-reading a
+spec in isolation — see [decision-log.md](./decision-log.md) entries 4 and 5 for full reasoning.
+Both refactors verified by execution (test count unchanged before/after, 0 failures both times)
+before being counted as done, the same discipline as every step above.
+
+- **The `AppException` hierarchy was inside `domain/`**, alongside the four pure rule functions,
+  since Phase 4 wrote the layout that way in both backend stacks. `domain/`'s own stated rule
+  (pure computation, no framework/HTTP dependency) doesn't hold for exception types, whose whole
+  job is HTTP-error translation. Split into `exception/` (commit `795fa99`, 52/52 tests before
+  and after). The Node spec had the identical mistake, fixed there too (`4aa14f4`) before any
+  Node code existed.
+- **`web/` mixed four responsibilities** — controllers, servlet filters, Spring Security hooks,
+  and exception-to-response translation. Unlike the above, this one was **not** shared with
+  Node — Node's spec already separated `middleware/` from `routes/`, since Express's request
+  model forces the distinction; Spring Boot's spec never had that forcing function. Split into
+  top-level `controller/` + `security/`, no `web/` umbrella, matching Node's shape (commit
+  `c300fa8`, 52/52 before and after).
+
+An architectural audit pass across both frontend stacks and the full `acceptance-criteria.md`
+found no further issues of this kind, and found and fixed one unrelated naming collision in
+`api-contracts.md` itself: the admin calendar endpoint reused `nightlyRate` — normatively the
+*discounted* per-night price everywhere else — for the plain, undiscounted `base_rate`. Renamed
+to `baseRate` (commit `f0c4cfe`), caught before any code touched that endpoint (item 11, not yet
+built).
+
+### Step 5 (guest reservation management: list, detail, modify, cancel) — done 2026-09-27, Spring Boot only
+
+`hotelapp-server-springboot@db7d225`. `GET /reservations`, `GET /reservations/{id}`,
+`PATCH /reservations/{id}`, `POST /reservations/{id}/cancel`. `mvn verify`: 65 IT tests, 0
+failures, 0 errors — added `ReservationManagementIT` (13) on top of Step 4's suite.
+
+Built `ReservationStatusRules.java`, the fourth and last of the pure functions
+`architecture-specification.md` had planned since Phase 4 (legal status transitions, AC-CX-09).
+Entity mutation done via two scoped methods (`Reservation.applyModification(...)`,
+`Reservation.cancel(...)`) rather than generic setters, each written so it cannot violate
+`reservations_status_timestamps_chk` by construction — an improvement worth carrying into later
+steps rather than a one-off.
+
+**Found and fixed a genuinely subtle bug during testing, not by inspection**: the shared `Clock`
+bean (required by `ClockConfig` for the cancellation-boundary criteria) also drives session
+expiry, so jumping the test clock to a cancellation-deadline instant was silently expiring the
+guest's own login session, producing a `401` instead of the expected business-logic response.
+Fixed by seeding the clock to a baseline close to the target instant *before* login and booking,
+not at real wall-clock time.
+
+**Closes the date half of Step 0/2's carry-forward requirement.** `checkInDate`/`checkOutDate`
+are returned from a *mutated* (`PATCH`) reservation for the first time, not just a freshly
+created one — a stronger round-trip test than Step 4's create-only path — and passed with no
+additional Jackson configuration needed.
+
+AC-OB-04 (cancel frees the room for another booking) is tested through real HTTP for the first
+time, now that both create and cancel exist. AC-CX-09's `CHECKED_IN`/`CHECKED_OUT` states still
+have no real endpoint (item 9) and are set via JDBC in the test fixture, same treatment Step 4
+gave AC-OB-05 — flagged for re-verification once that step lands.
+
 **Done means:** Step 0's slice ran and its findings were folded back into
 [api-contracts.md](./api-contracts.md); both backends pass every criterion in
 [acceptance-criteria.md](./acceptance-criteria.md); the OpenAPI diff is clean; CI is green in
@@ -536,23 +609,18 @@ the guest in, and see the calendar update — against either backend, from eithe
 
 ## Open items carried into Phase 6
 
-1. **Date serialization remains unvalidated.** Phase 6 Step 0 flagged both money and date
-   round-tripping as unexercised; Step 2 closed the money half (`baseRate` asserted as a JSON
-   string against the raw response body). **No endpoint built so far returns a persisted date** —
-   this is the one live item on this list, and it carries forward to whichever step first returns
-   one, earliest candidate `POST /reservations` (Phase 6 item 6).
-2. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Steps 0
-   through 3 were all built against Spring Boot first, per the migration asymmetry: the
+1. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Steps 0
+   through 5 were all built against Spring Boot first, per the migration asymmetry: the
    Flyway-owning backend had to make the schema real before Prisma has anything to introspect.
    The Node backend has not been started.
-3. **No end-to-end browser testing.** The one acknowledged gap in the test strategy, named in
+2. **No end-to-end browser testing.** The one acknowledged gap in the test strategy, named in
    [devops-pipeline-overview.md](./devops-pipeline-overview.md#deliberately-absent) and in all four
    stacks' `testing-standards.md`. Fine to carry; worth deciding deliberately rather than by
    default.
-4. **The per-repo `README.md` files are one line each**, and are the most-read files in a portfolio
+3. **The per-repo `README.md` files are one line each**, and are the most-read files in a portfolio
    project. Phase 8 item 5 covers them; worth noting that they are currently the weakest artifact
    in the four implementation repos.
-5. **A CI job that diffs the byte-identical document pairs** is specified in four stack documents
+4. **A CI job that diffs the byte-identical document pairs** is specified in four stack documents
    but not yet written. Four pairs now depend on it —
    [context-map.md](../context-map.md) lists them. Six broken cross-document anchors were found by
    hand during Phases 3 and 4, which is the argument for automating the link check alongside it.
@@ -574,6 +642,15 @@ the guest in, and see the calendar update — against either backend, from eithe
   md5-identical shared blocks.
 - **Docker / Testcontainers** was blocked at Step 0 (Docker not installed) and again at Step 1
   (a stale `testcontainers-bom` pin); both are resolved — see the Phase 6 outcome above.
+
+### Resolved since Phase 6 began
+
+- **Date serialization** is now validated: `checkInDate`/`checkOutDate` round-trip correctly from
+  both a created (Step 4) and a modified (Step 5) reservation. Money was closed in Step 2 — both
+  halves of Step 0's original carry-forward requirement are now closed.
+- **Two package-layout mistakes** (the exception hierarchy in `domain/`; `web/` mixing four
+  responsibilities) found and refactored — see "Architectural corrections" under Step 4 above and
+  decision-log.md entries 4-5.
 
 ---
 

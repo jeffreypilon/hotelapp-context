@@ -53,11 +53,12 @@ Those three are the project. Everything else elaborates them.
 |-------|--------|
 | `stacks/react/` | ✅ **Written** (Phase 3) — 12 documents |
 | `stacks/angular/` | ✅ **Written** (Phase 3) — 12 documents |
-| `stacks/nodejs/` | ⬜ Stubs — Phase 4 |
-| `stacks/springboot/` | ⬜ Stubs — Phase 4 |
+| `stacks/nodejs/` | ✅ **Written** (Phase 4) — 10 documents |
+| `stacks/springboot/` | ✅ **Written** (Phase 4) — 10 documents |
 
-See [phased-implementation-plan.md](./shared/phased-implementation-plan.md) for what each
-phase delivers.
+**All 44 stack documents are written.** See
+[phased-implementation-plan.md](./shared/phased-implementation-plan.md) for what each phase
+delivered and what remains (Phase 5 onward: agent instructions, then implementation).
 
 Ten documents common to all four stacks:
 
@@ -81,12 +82,30 @@ Two more in the frontend stacks only:
 | `ui-specifications.md` | **Screen by screen, S0–S15.** Sections 1–2 are byte-identical between the React and Angular files — any diff is a defect. Section 3 holds per-stack notes |
 | `state-management.md` | Server-state, form, and session state. **The one place the two frontends differ in substance**: TanStack Query v5 for React, NgRx SignalStore for Angular |
 
-Two documents are held to cross-stack identity rather than merely consistency:
-`ui-specifications.md` (sections 1–2) and `error-handling.md` (sections 1–4, so a guest sees
-the same message text in either client). Both are built from one shared body, and a CI diff
-of those sections is the frontend analogue of the OpenAPI diff that guards the backends.
+### Documents held to cross-stack identity
 
-Rule for these: a stack document may say **how** its technology satisfies a shared
+Four pairs are byte-identical over their shared sections, not merely consistent. Each is built
+from one shared body, and a CI diff of those sections is the analogue of the OpenAPI diff that
+guards the two backends' wire behavior.
+
+| Pair | Identical span | Why |
+|------|---------------|-----|
+| `react` / `angular` `ui-specifications.md` | §1–2 | Both clients must deliver the same screens, states, and copy |
+| `react` / `angular` `error-handling.md` | §1–4 | A guest must see the same message text in either client |
+| `nodejs` / `springboot` `error-handling.md` | §1–5 | The two backends must emit the same status, `code`, `title`, and `detail` for the same condition |
+| `nodejs` / `springboot` `testing-standards.md` | §1–5 | Both must satisfy the same 44 acceptance criteria at the same layers |
+
+### The one asymmetry
+
+The two frontends are peers. **The two backends are not.** Flyway is the sole DDL executor and
+runs in `springboot`; `nodejs` introspects with `prisma db pull` and cannot migrate a database
+unaided — [versioning-strategy.md](./shared/versioning-strategy.md#database-schema-migrations),
+logged as a reversal in [decision-log.md](./shared/decision-log.md). That shapes both backends'
+`architecture-specification.md`, `environment-setup-guide.md`, `devops-pipeline.md`,
+`security-implementation.md`, and `testing-standards.md`. A backend document that reads as
+symmetric on schema, migrations, or database privilege is probably wrong.
+
+Rule for all stack documents: one may say **how** its technology satisfies a shared
 requirement. It may not restate or contradict the requirement.
 
 ---

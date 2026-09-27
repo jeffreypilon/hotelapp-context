@@ -110,11 +110,15 @@ counterparts to the cent and to the second.
 | `domain/Cancellation` | Deadline = check-in midnight in the property's `ZoneId` **minus exactly `Duration.ofHours(48)`** | [AC-CX-04](../../shared/acceptance-criteria.md#ac-cx-04--deadline-respects-the-propertys-timezone-not-the-servers), [AC-CX-05](../../shared/acceptance-criteria.md#ac-cx-05--dst-transition-does-not-shift-the-deadline-arithmetic) |
 | `domain/Allocation` | Candidate ordering: lowest `room_number`, natural sort | [AC-OB-07](../../shared/acceptance-criteria.md#ac-ob-07--allocation-order-is-deterministic) |
 | `domain/ReservationStatusRules` | Legal transitions | [AC-CX-09](../../shared/acceptance-criteria.md#ac-cx-09--illegal-cancellations-are-rejected) |
-| `domain/AppException` + subclasses | The exception hierarchy | — |
+| `domain/PaymentValidation` | Luhn, expiry, CVV shape, brand derivation | — |
 
 `final`, private constructor, static methods. **No Spring, no JPA, no `Instant.now()`** — a `Clock` is a
 parameter. `Duration.ofHours(48)` rather than `plusDays(-2)`: the exact-duration reading is what
 AC-CX-05 pins, and the two differ by an hour across a DST boundary.
+
+**The exception hierarchy (`exception/AppException` + subclasses, `exception/ProblemCode`) is not
+here** — it computes nothing, and lives in its own package. See "Exception handling architecture"
+in [architecture-specification.md](./architecture-specification.md#exception-handling-architecture).
 
 ---
 

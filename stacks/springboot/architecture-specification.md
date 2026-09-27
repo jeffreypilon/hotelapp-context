@@ -142,7 +142,10 @@ com.hotelapp
     Cancellation.java           Deadline computation — PURE, static
     Allocation.java             Candidate ordering — PURE, static
     ReservationStatusRules.java Legal transitions — PURE, static
-    AppException.java + subclasses
+    PaymentValidation.java      Luhn/expiry/CVV shape checks — PURE, static
+
+  exception/
+    AppException.java + subclasses, ProblemCode.java   see "Exception handling architecture" below
 
   repository/
     UserRepository.java  SessionRepository.java  PropertyRepository.java
@@ -179,6 +182,39 @@ what makes the cancellation-boundary criteria testable at all —
 [AC-CX-01](../../shared/acceptance-criteria.md#ac-cx-01--just-before-the-deadline-refundable)
 through AC-CX-05 need the clock controlled. `Instant.now()` called directly is untestable and
 retrofitting the bean later means touching every call site.
+
+### Exception handling architecture
+
+`exception/` holds the whole `AppException` hierarchy plus `ProblemCode`, deliberately separate
+from `domain/`. This was reversed from an earlier version of this document that listed
+`AppException.java + subclasses` inside `domain/` itself — see
+[decision-log.md](../../shared/decision-log.md) entry 4. The distinction that matters:
+
+- **`domain/` is pure business computation** — a function of its inputs, no side effects, no
+  knowledge that HTTP or a database exists. `Pricing`, `Cancellation`, `Allocation`,
+  `ReservationStatusRules`, and `PaymentValidation` all satisfy this.
+- **`exception/` is the vocabulary a domain or service-layer failure is reported through**, and
+  its entire reason to exist is to be caught by
+  [`ProblemDetailExceptionHandler`](./error-handling.md) and turned into an RFC 9457 response.
+  `AppException` carries a `ProblemCode` — a `(httpStatus, title)` pair — for exactly that
+  purpose. That is API-error-translation, not business computation, even when a subclass's name
+  describes a business condition (`RoomUnavailableException`, `PaymentDeclinedException`).
+  Neither imports Spring or JPA, but "imports nothing framework-specific" is not the same test as
+  "computes a business rule" — `ValidationException` and `RateLimitedException` make that gap
+  obvious, since neither expresses anything about hotels at all.
+
+**Hierarchy.** `AppException` (abstract, carries a `ProblemCode` and an optional
+`List<FieldErrorResponse>`) is the single root every subclass extends —
+[`ProblemDetailExceptionHandler`](./error-handling.md) catches `AppException` once and reads the
+code/status/fields from the instance, rather than one `@ExceptionHandler` method per subclass.
+Each subclass exists only to fix its `ProblemCode` and message at construction; none carries
+behavior of its own. `ValidationException.field(field, code, message)` is the one exception to
+"no behavior" — a static factory, kept for convenience, not a computation.
+
+**Where a subclass's `ProblemCode` comes from** is `error-handling.md`'s SQLSTATE and
+field-validation tables — this section owns the package layout and the hierarchy shape;
+`error-handling.md` remains the one place that maps a specific failure to a specific code, per
+this repo's own rule that a decision lives in exactly one document.
 
 ---
 

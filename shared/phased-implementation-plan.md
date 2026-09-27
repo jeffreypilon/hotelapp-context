@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Step 0 (walking skeleton) and Step 1 (sessions) done, Spring Boot only |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0 (skeleton), 1 (sessions), 2 (public catalogue) done, Spring Boot only |
 | 7 | Frontend implementation | ⬜ |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -419,6 +419,34 @@ re-test through HTTP once that endpoint exists.
 Unlike Step 0, Step 1 found no contract defect — nothing was folded back into
 [api-contracts.md](./api-contracts.md).
 
+### Step 2 (public catalogue) — done 2026-09-27, Spring Boot only
+
+`hotelapp-server-springboot@c430f67`. Completed `GET /properties` (`sort`, `city`, `q`, and a
+`400` instead of a clamp on out-of-range paging — [AC-CC-03](./acceptance-criteria.md#ac-cc-03--pagination-is-consistent-everywhere))
+and newly built `GET /properties/{propertyId}`, `GET /properties/{propertyId}/room-types`,
+`GET /room-types/{roomTypeId}`, `GET /amenities`, `GET /rate-categories`. `mvn verify`: 26 run,
+0 failures, 0 errors — `AuthControllerIT` (11) + `PropertyControllerIT` (2) +
+`PublicCatalogueIT` (13), run twice for stability.
+
+**Closes the money half of Step 0's carry-forward requirement.** `baseRate` is now asserted
+directly against the raw JSON body as the string `"249.00"`, never a bare number — the check
+Step 0 flagged as still owed. **The date half remains open**: no endpoint in this step returns a
+persisted date (`timezone` is a string, not a date), so it still carries forward to whichever
+step first returns one — earliest candidate is `POST /reservations` (item 6 above).
+
+Two implementation bugs surfaced and were fixed, not workaround-hidden: Spring Data JPA's
+`Specification.and(null)` throws here rather than no-op'ing, so optional `city`/`q` criteria are
+now folded in conditionally; and sharing one Testcontainers Postgres across three `*IT` classes
+via `@Testcontainers`/`@Container` was stopping and restarting the container between classes,
+producing a genuine mid-teardown `500` — fixed with a singleton-container pattern (a plain
+`static { POSTGRES.start(); }` block) instead.
+
+**One judgment call, flagged rather than silently decided:** `api-contracts.md` names a "summary
+form" for the `roomTypes` array embedded in `GET /properties/{propertyId}` without an example.
+Interpreted as the flat room-type fields without the `amenities`/`photos` collections
+(`RoomTypeSummaryResponse`) — worth confirming against the frontends' actual needs before that
+shape is relied on in Phase 7.
+
 **Done means:** Step 0's slice ran and its findings were folded back into
 [api-contracts.md](./api-contracts.md); both backends pass every criterion in
 [acceptance-criteria.md](./acceptance-criteria.md); the OpenAPI diff is clean; CI is green in
@@ -476,11 +504,11 @@ the guest in, and see the calendar update — against either backend, from eithe
 
 ## Open items carried into Phase 6
 
-1. **Money and date serialization remain unvalidated.** Phase 6 Step 0 found the nullable-field
-   defect but `GET /properties` carries neither a money nor a date field, so neither of the
-   project's two riskiest serialization rules has actually been exercised yet. **This is the one
-   live blocker-shaped item on this list** — the first endpoint returning `baseRate` must verify
-   both explicitly, per the carry-forward requirement in the Phase 6 outcome above.
+1. **Date serialization remains unvalidated.** Phase 6 Step 0 flagged both money and date
+   round-tripping as unexercised; Step 2 closed the money half (`baseRate` asserted as a JSON
+   string against the raw response body). **No endpoint built so far returns a persisted date** —
+   this is the one live item on this list, and it carries forward to whichever step first returns
+   one, earliest candidate `POST /reservations` (Phase 6 item 6).
 2. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Step 0
    and Step 1 were both built against Spring Boot first, per the migration asymmetry: the
    Flyway-owning backend had to make the schema real before Prisma has anything to introspect.

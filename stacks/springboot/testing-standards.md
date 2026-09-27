@@ -227,7 +227,7 @@ and not enforced.
 |---------|--------|
 | Runner | JUnit 5 |
 | Assertions | AssertJ |
-| HTTP assertions | `MockMvc` for slices, `TestRestTemplate` for full-stack |
+| HTTP assertions | `MockMvc` for slices, `RestTestClient` for full-stack (`TestRestTemplate` was removed in Spring Boot 4) |
 | Database | **Testcontainers** (`org.testcontainers:postgresql`), image `postgres:18.6` |
 | Migrations in tests | **Flyway**, the same mechanism as production |
 | Clock | The injected `Clock` bean, replaced with `Clock.fixed(...)` |

@@ -204,6 +204,7 @@ types already give.
 | `prisma migrate dev` / `deploy` | Prisma does not apply DDL — [versioning-strategy.md](../../shared/versioning-strategy.md#database-schema-migrations) |
 | Hand-editing `schema.prisma` to change the schema | Same |
 | `process.env` read outside `config/env.ts` | Unvalidated config reaching a URL as `undefined` |
+| `undefined` in a DTO where the contract says nullable | `JSON.stringify` drops it, producing an absent field where `null` is required — [api-contracts.md](../../shared/api-contracts.md#conventions) |
 | A second money or date formatter | One place, or the rule breaks quietly |
 | A bare `throw new Error` for a known condition | Becomes a `500`, hiding a handled case |
 | Business logic in a route handler | Wrong layer, and not comparable with the Spring Boot backend |

@@ -25,6 +25,7 @@ Derived from [project-overview.md](./project-overview.md) and
 | Currency | `"USD"` throughout; every money-bearing response carries an explicit `currency` |
 | IDs | UUID strings |
 | Versioning | Path-based (`/v1`). Breaking changes go to `/v2`; additive fields do not bump the version |
+| **Nullable fields** | **Always present and explicitly `null`.** An absent field is never equivalent to `null` — see below |
 | Trailing slashes | Not accepted; `/properties/` is a 404 |
 
 > **Design Decision — money as a JSON string.**
@@ -34,6 +35,33 @@ Derived from [project-overview.md](./project-overview.md) and
 > Prisma `Decimal` → JSON string → client-side decimal formatting. It also means the Node
 > and Spring backends cannot silently disagree about rounding at the serialization
 > boundary, which is precisely the kind of divergence this project forbids.
+
+> **Design Decision — a nullable field is `null`, never absent.**
+> A response carries every field the contract declares. `"photoUrl": null` is correct;
+> omitting `photoUrl` is not. The response examples throughout this document already show
+> explicit nulls (`"line2": null`, `"propertyId": null`) and they are normative.
+>
+> **This exists because the two backends would otherwise disagree on the wire.** Node's
+> `JSON.stringify` emits `"photoUrl": null` by default; Spring with
+> `spring.jackson.default-property-inclusion=non_null` omits the field entirely. Identical
+> data, different bytes — and the OpenAPI diff would not catch it, because both documents
+> would declare the field nullable. That is exactly the divergence this project is organized
+> to prevent, and it was found by building the first real client in Phase 6 Step 0.
+>
+> It matters to clients too: in TypeScript, `string | null` and "may be absent" are genuinely
+> different types, and a consumer testing `=== null` breaks silently against an omitted field.
+>
+> **Both backends must configure this deliberately**, since both defaults are wrong in opposite
+> directions:
+>
+> - **Spring Boot** — default inclusion must be `always`. Apply `@JsonInclude(NON_NULL)` to the
+>   Problem Details type *only*, which is the one place omission is wanted (keeping `errors` out
+>   of non-validation bodies).
+> - **Node** — do not strip nulls when building DTOs. `undefined` must not reach `JSON.stringify`
+>   where `null` is meant, because `stringify` drops `undefined` properties silently.
+>
+> The one deliberate exception is `errors[]` in a Problem Details body, which is **absent**
+> rather than null outside validation failures — stated in the table above.
 
 ### Request validation
 
@@ -215,7 +243,7 @@ All errors use RFC 9457 Problem Details with `Content-Type: application/problem+
 | `errors[]` | validation only | Field-level detail |
 
 > **Design Decision — RFC 9457 rather than a bespoke envelope.**
-> RFC 9457 (which obsoleted RFC 7807 in 2023) is the standardized shape, and Spring Boot 3
+> RFC 9457 (which obsoleted RFC 7807 in 2023) is the standardized shape, and Spring Boot
 > produces it natively via `ProblemDetail`. Adopting it means the Spring backend needs
 > almost no custom error plumbing, the Node backend has one well-specified target to match,
 > and both frontends share one parser. `code` and `traceId` are registered extension
@@ -1190,7 +1218,7 @@ document is being honored, and it belongs in CI.
 | Authentication | Opaque session token in an `HttpOnly; SameSite=Lax` cookie, backed by a `sessions` row in the shared database | Both backends already share the database that would have to be consulted anyway; revocation is immediate, and the clients need no token handling at all |
 | Cookie `SameSite` | `Lax` | Blocks every cross-site state-changing method while allowing top-level GET deep links into the admin area; no GET endpoint here mutates state |
 | Session lifetime | 8-hour sliding idle window, 30-day absolute cap, `expires_at` written at most once per 5 minutes | Covers a full front-desk shift without logging anyone out, without turning a read-hot path into a write-hot one |
-| Error format | RFC 9457 `application/problem+json` | Standardized; native in Spring Boot 3, one parser for both clients |
+| Error format | RFC 9457 `application/problem+json` | Standardized; native in Spring Boot, one parser for both clients |
 | Pagination | 1-based offset with a `pagination` envelope | Admin tables need page counts and arbitrary sorts; data volumes make `OFFSET` a non-issue |
 | Money in JSON | Decimal strings | Avoids IEEE-754 drift between two backends and two clients |
 | Booking granularity | Search by room type, server allocates the room | Keeps the no-overbooking guarantee on the database constraint, not on a stale client read |

@@ -320,7 +320,7 @@ Java, Spring Boot, Spring Data JPA. Structure per
 
 ### The advantage, and the trap
 
-**Spring Boot 3 produces RFC 9457 `ProblemDetail` natively**, which is why that format was chosen
+**Spring Boot produces RFC 9457 `ProblemDetail` natively**, which is why that format was chosen
 in [api-contracts.md](../../shared/api-contracts.md#error-responses). The trap is that the
 built-in behavior is *close* to this contract without matching it: it omits `code` and `traceId`,
 and its `detail` strings are Spring's, not the table in section 2. So the defaults must be
@@ -389,7 +389,7 @@ Two Jackson settings are load-bearing, not preferences:
 | Setting | Why |
 |---------|-----|
 | `spring.jackson.deserialization.fail-on-unknown-properties=true` | The reject-unknown-fields rule. Off by default, and silently accepting unknown fields violates [api-contracts.md](../../shared/api-contracts.md#request-validation) |
-| `spring.jackson.default-property-inclusion=non_null` | Keeps `errors` out of non-validation bodies rather than emitting `"errors": null` |
+| `@JsonInclude(NON_NULL)` on the Problem Details type **only** | Keeps `errors` out of non-validation bodies rather than emitting `"errors": null`. **Do not set this globally** — `spring.jackson.default-property-inclusion` must stay `always`, or nullable data fields are omitted and this backend disagrees on the wire with the Node one. See [api-contracts.md](../../shared/api-contracts.md#conventions) |
 
 `HttpMessageNotReadableException` must also be handled: unknown-field rejection surfaces there,
 not as a `MethodArgumentNotValidException`, and unhandled it becomes a `400` with Spring's own

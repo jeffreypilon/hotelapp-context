@@ -33,7 +33,7 @@ Derived from [project-overview.md](./project-overview.md). Consumed by
 > **Design Decision — native PostgreSQL `enum` types over `varchar` + `CHECK`.**
 > Every enumerated domain below is a real PostgreSQL enum. The domains are stable
 > (defined by the product spec, not by user data), and both ORMs support them:
-> Prisma maps them natively via `enum` blocks, and Hibernate 6.2+ maps them with
+> Prisma maps them natively via `enum` blocks, and Hibernate maps them with
 > `@JdbcTypeCode(SqlTypes.NAMED_ENUM)`. The trade-off is that adding a value requires
 > `ALTER TYPE ... ADD VALUE`; that is acceptable for domains this stable, and it buys
 > database-level validation that no application bug can bypass.

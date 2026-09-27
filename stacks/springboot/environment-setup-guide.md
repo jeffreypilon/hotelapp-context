@@ -122,7 +122,7 @@ spring.jpa.hibernate.ddl-auto=validate
 
 # ---- Jackson: both are load-bearing, not preferences ----
 spring.jackson.deserialization.fail-on-unknown-properties=true
-spring.jackson.default-property-inclusion=non_null
+spring.jackson.default-property-inclusion=always
 
 # ---- Problem Details: we produce our own ----
 spring.mvc.problemdetails.enabled=false
@@ -154,6 +154,7 @@ Four of these are worth calling out because the defaults are wrong for this cont
 | Property | Why it must be set |
 |----------|--------------------|
 | `fail-on-unknown-properties=true` | **Off by default.** Leaving it off violates the reject-unknown-fields rule and fails [AC-CC-02](../../shared/acceptance-criteria.md#ac-cc-02--unknown-request-fields-are-rejected) |
+| `default-property-inclusion=always` | **Must be `always`, not `non_null`.** A nullable field is serialized as explicit `null`; omitting it makes this backend disagree on the wire with the Node one. Use `@JsonInclude(NON_NULL)` on the Problem Details type alone — [api-contracts.md](../../shared/api-contracts.md#conventions) |
 | `problemdetails.enabled=false` | On, Spring emits its own problem documents alongside ours — some errors then carry `code` and some do not |
 | `ddl-auto=validate` | Anything else lets Hibernate alter the schema this repo is supposed to be validating against |
 | `org.hibernate.orm.jdbc.bind=OFF` | It logs bound parameter values, which on the login query means a password |

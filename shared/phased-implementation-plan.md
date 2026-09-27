@@ -231,7 +231,7 @@ gesture:
 | Timezone arithmetic for the cancellation deadline | Must not depend on the process timezone — [AC-CX-04](./acceptance-criteria.md#ac-cx-04--deadline-respects-the-propertys-timezone-not-the-servers) |
 | Session middleware, including the 5-minute write-throttle | Express middleware vs. a Spring Security filter; same numbers |
 | Injectable clock | Required by the cancellation criteria, painful to retrofit — decide it here |
-| RFC 9457 generation | Spring Boot 3 has `ProblemDetail` natively; Node needs it built |
+| RFC 9457 generation | Spring Boot has `ProblemDetail` natively; Node needs it built |
 | OpenAPI 3.1 generation that survives the diff | `springdoc-openapi` vs. a Node generator, normalized comparison per [devops-pipeline-overview.md](./devops-pipeline-overview.md#1-the-openapi-diff) |
 | DTOs distinct from ORM entities | No entity is ever serialized directly |
 
@@ -335,6 +335,40 @@ Build both backends. **One at a time, and the harder one first.**
 > This is the walking-skeleton step the project skipped earlier; the reasoning and the general
 > practice are recorded in `claude-memory/AI Assisted Software Architecture Approach.md`. Arriving
 > at Phase 6 is the last cheap opportunity to take it.
+
+### What Step 0 actually taught us — done 2026-09-27
+
+Step 0 ran: Spring Boot 4.1.1 on `:8080`, Vite on `:5173`, a browser rendering two seeded properties
+fetched live. Commits `e34f686` (springboot) and `d0a20fe` (client-react).
+
+**It found one real contract defect**, which is the whole reason the step exists:
+
+> **Nullable fields were being omitted rather than sent as `null`.**
+> `environment-setup-guide.md` specified `spring.jackson.default-property-inclusion=non_null`, which
+> drops `photoUrl` from the JSON entirely — while this document's own response examples show explicit
+> nulls. The two documents contradicted each other.
+>
+> Worse than a client-convenience issue: **Node's `JSON.stringify` emits `"photoUrl": null` by
+> default**, so the two backends would have produced different bytes for identical data, and the
+> OpenAPI diff would not have caught it. Fixed by stating the rule in
+> [api-contracts.md](./api-contracts.md#conventions) and correcting the Jackson configuration and
+> both backends' DTO guidance. **Had this shipped, it would have propagated through 42 endpoints.**
+
+**It also revealed that Step 0 validated less than this document assumed.** `GET /properties` carries
+**no money field and no date field**, so the two riskiest serialization rules in the project — money
+as a decimal string, and dates not shifting — remain **unvalidated**. That is not a failure of the
+step, but it is a correction to what it proves.
+
+> **Carry-forward requirement:** the first endpoint returning `baseRate` — `GET
+> /properties/{id}/room-types`, Step 4 — must explicitly verify that money round-trips as a decimal
+> **string** through both backends and both clients, and that no date shifts. Do not inherit
+> confidence from Step 0; it did not test either.
+
+**Two smaller outcomes.** Spring Boot's current stable is **4.1.1** (21 Aug 2026), not the 3.x these
+documents assumed — references were corrected, and `TestRestTemplate` is gone in favour of
+`RestTestClient`. And `mvn verify` could not run: **Docker is not installed**, so Testcontainers
+cannot start. That blocks the acceptance-criteria tests from Step 1 onward and needs resolving before
+Step 3.
 
 Suggested order within each backend after that, each step ending somewhere demonstrable:
 

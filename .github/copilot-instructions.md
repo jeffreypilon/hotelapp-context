@@ -75,10 +75,19 @@ dropdb hotelapp_v001_test
 
 ## Project state
 
-Phases 1–4 complete: all 14 `shared/` and all 44 `stacks/` documents written, plus `V001`.
-**Phase 5 (this file and its siblings) is current. Phase 6 is implementation**, and its Step 0 is a
-walking skeleton reaching a browser before the remaining backend work — see
-`shared/phased-implementation-plan.md`.
+Phases 1–5 complete: all 14 `shared/` and all 44 `stacks/` documents, `V001`, and Copilot
+instructions in all five repositories. **Phase 6 Step 0 is done** — a walking skeleton reaching a
+browser, Spring Boot 4.1.1 plus a React screen rendering seeded properties.
+
+**Step 0 found a real contract defect** (nullable fields being omitted rather than sent as `null`,
+which would have made the two backends disagree on the wire) and it has been fixed here. It also
+established that **money and date serialization remain unvalidated**, because `GET /properties`
+carries neither — see the Step 0 outcome section in `shared/phased-implementation-plan.md` before
+assuming either is proven.
+
+**Phase 6 Step 1 onward is implementation**, in the four sibling repositories, not here. Changes to
+this repository from now on are usually *corrections driven by implementation* — which is the
+intended direction.
 
 ## Trust these instructions
 

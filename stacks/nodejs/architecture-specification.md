@@ -307,6 +307,15 @@ Mappers live in `dto/` and handle the contract's serialization rules: `Prisma.De
 `snake_case` → `camelCase`. Per
 [glossary-of-conventions.md](../../shared/glossary-of-conventions.md#the-identifier-casing-rule).
 
+**A nullable field is emitted as explicit `null`, never omitted**, per
+[api-contracts.md](../../shared/api-contracts.md#conventions). The hazard in this stack is
+`undefined`: `JSON.stringify` **silently drops** a property whose value is `undefined`, so a mapper
+that writes `photoUrl: row.photoUrl ?? undefined` produces an absent field where the contract
+requires `null`. Map to `?? null`, and type DTO fields as `string | null` rather than optional
+(`photoUrl?: string`) so the compiler catches the difference. This is the exact point at which the
+two backends would otherwise disagree on the wire — Spring's equivalent trap is
+`default-property-inclusion`, and it was found by building the first real client in Phase 6 Step 0.
+
 ---
 
 ## OpenAPI

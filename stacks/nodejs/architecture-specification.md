@@ -149,11 +149,13 @@ src/
     amenityRepo.ts
 
   domain/
-    errors.ts                 AppError hierarchy
     pricing.ts                Rate resolution + rounding — PURE
     cancellation.ts           Deadline computation — PURE
     allocation.ts             Candidate ordering — PURE
     status.ts                 Legal transitions — PURE
+
+  errors/
+    errors.ts                 AppError hierarchy   see "Error handling architecture" below
 
   dto/
     *.dto.ts                  Request and response shapes + mappers
@@ -179,6 +181,30 @@ their Java counterparts. This is where
 and
 [AC-CX-04](../../shared/acceptance-criteria.md#ac-cx-04--deadline-respects-the-propertys-timezone-not-the-servers)
 are satisfied.
+
+### Error handling architecture
+
+`errors.ts` (the `AppError` hierarchy) lives in its own `errors/` folder, not `domain/` — the same
+correction made on the Spring Boot side, logged once for both stacks in
+[decision-log.md](../../shared/decision-log.md) entry 4. The distinction:
+
+- **`domain/` is pure business computation** — a function of its inputs, no I/O, no knowledge that
+  HTTP or a database exists. `pricing.ts`, `cancellation.ts`, `allocation.ts`, and `status.ts` all
+  satisfy this.
+- **`errors/` is the vocabulary a domain or service-layer failure is reported through**, and its
+  entire reason to exist is to be caught once, centrally, and turned into an RFC 9457 response —
+  see [error-handling.md](./error-handling.md). `AppError` carries the same kind of
+  `(httpStatus, code, title)` triple Spring's `ProblemCode` does. That is API-error-translation,
+  not business computation, regardless of whether a subclass's name describes a domain condition
+  (`RoomUnavailableError`) or nothing domain-specific at all (`ValidationError`,
+  `RateLimitedError` — neither expresses anything about hotels). "No Express or Prisma import" and
+  "computes a business rule" are different tests, and the folder layout had been satisfying only
+  the first.
+
+**Where a subclass's code/status comes from** is `error-handling.md`'s SQLSTATE and
+field-validation tables (byte-identical with the Spring Boot document through section 5) — this
+section owns the folder layout and the hierarchy shape; `error-handling.md` remains the one place
+that maps a specific failure to a specific code.
 
 ---
 

@@ -226,44 +226,51 @@ Prisma consumes the schema by introspection — `prisma db pull`, with `prisma m
 
 ---
 
-## 4. Spring Boot package layout: the exception hierarchy inside `domain/` → its own `exception/` package
+## 4. Both backends' package layout: the exception hierarchy inside `domain/` → its own package
 
-**Decided:** `stacks/springboot/architecture-specification.md`'s package layout listed
-`AppException.java + subclasses` as part of `domain/`, alongside the four pure static-function
-rule classes (`Pricing`, `Cancellation`, `Allocation`, `ReservationStatusRules`). `ProblemCode`
-went in the same package. Built on directly: by the end of Phase 6 Step 4, sixteen files sat in
-`domain/`, twelve of them exception types (`AppException`, `ProblemCode`, and ten subclasses) and
-four of them the actual pure functions.
+**Decided:** In Phase 4, `stacks/nodejs/` and `stacks/springboot/` were written together, and both
+architecture-specification.md documents listed their exception hierarchy as part of `domain/`,
+alongside the pure rule functions — `AppException.java` (Spring) and `errors.ts` (Node) sat next
+to `Pricing`/`Cancellation`/`Allocation`/status-transition logic in both. Built on directly on the
+Spring side: by the end of Phase 6 Step 4, sixteen files sat in `domain/` in
+`hotelapp-server-springboot`, twelve of them exception types (`AppException`, `ProblemCode`, and
+ten subclasses) and four the actual pure functions. Node had not started, so nothing was built on
+it there yet.
 
 **Reversed:** Caught the way most of this project's review has worked — by inspection of the
-actual repository, not a re-read of the spec in isolation. The stated rationale for `domain/`
-(pure computation, no Spring/JPA/HTTP dependency, unit-testable without a context) genuinely holds
-for the four rule classes. It does not hold for the exception hierarchy: `AppException` exists
-specifically to carry a `ProblemCode` — an HTTP status and title — for
-`ProblemDetailExceptionHandler` to translate into a response. That is API-error-translation, not
-business computation, regardless of whether a subclass's name describes a domain condition
-(`RoomUnavailableException`) or nothing domain-specific at all (`ValidationException`,
-`RateLimitedException` — neither expresses anything about hotels). "Imports no framework class"
-and "computes a business rule" are different tests, and the package layout had been satisfying
-only the first.
+actual Spring Boot repository, not a re-read of the spec in isolation — and then checked against
+the Node spec, which turned out to share the identical mistake. The stated rationale for `domain/`
+(pure computation, no framework/HTTP dependency, unit-testable without a context) genuinely holds
+for the rule functions. It does not hold for the exception hierarchy: `AppException`/`AppError`
+exist specifically to carry an HTTP status and title for a central handler to translate into a
+response. That is API-error-translation, not business computation, regardless of whether a
+subclass's name describes a domain condition (`RoomUnavailableException`) or nothing
+domain-specific at all (`ValidationException`, `RateLimitedException` — neither expresses anything
+about hotels). "Imports no framework class" and "computes a business rule" are different tests,
+and the layout had been satisfying only the first, in both stacks.
 
-**Replaced with:** A dedicated `exception/` package holding the whole `AppException` hierarchy and
-`ProblemCode`, entirely separate from `domain/`. Specified in
-[architecture-specification.md](../stacks/springboot/architecture-specification.md#exception-handling-architecture),
-including the hierarchy shape and why the split matters, not just the new location.
+**Replaced with:** A dedicated package per stack — `exception/` (Spring Boot), `errors/` (Node,
+matching that ecosystem's naming, not forced to match Java's) — holding the whole error hierarchy,
+entirely separate from `domain/`. Specified in each stack's own architecture-specification.md
+under "Exception handling architecture" / "Error handling architecture", including the hierarchy
+shape and why the split matters, not just the new location.
 
 **What changed as a result:**
 
-- `domain/` in the package listing and in `module-registry.md`'s table now names only pure
-  functions: `Pricing`, `Cancellation`, `Allocation`, `ReservationStatusRules`,
-  `PaymentValidation`.
+- `domain/` in both stacks' package listings and `module-registry.md` tables now names only pure
+  functions: `Pricing`/`pricing.ts`, `Cancellation`/`cancellation.ts`, `Allocation`/`allocation.ts`,
+  `ReservationStatusRules`/`status.ts`, plus Spring's `PaymentValidation` (Node has no equivalent
+  file yet — Step 4 hasn't been built there).
 - The actual code in `hotelapp-server-springboot` needed a mechanical refactor — moving twelve
   files and updating every import that referenced them (`web/`, `service/`, and the moved files'
   own package declarations) — since four backend steps had already been built on the old layout.
   Unlike the migration-ownership reversal (entry 3), this one was caught after code existed, not
   before, so the correction cost a refactor rather than an edit.
-- No other stack's documents referenced this package shape (it is Spring Boot-specific structure,
-  not a shared contract), so this reversal touches only `stacks/springboot/` documents.
+- **The Node side cost nothing but the spec edit** — no code exists there yet, so this is the
+  cheaper of the two corrections and a reminder of why catching a layout mistake before Phase 6
+  reaches a stack matters.
+- This reversal touches only the two backend stacks' documents — the two frontends have no
+  equivalent `domain/`-shaped layer.
 
 ---
 

@@ -100,10 +100,13 @@ the cent and to the second.
 | `domain/cancellation.ts` | Deadline = check-in midnight in the property's zone **minus exactly 172,800 s** | [AC-CX-04](../../shared/acceptance-criteria.md#ac-cx-04--deadline-respects-the-propertys-timezone-not-the-servers), [AC-CX-05](../../shared/acceptance-criteria.md#ac-cx-05--dst-transition-does-not-shift-the-deadline-arithmetic) |
 | `domain/allocation.ts` | Candidate ordering: lowest `room_number`, natural sort | [AC-OB-07](../../shared/acceptance-criteria.md#ac-ob-07--allocation-order-is-deterministic) |
 | `domain/status.ts` | Legal transitions | [AC-CX-09](../../shared/acceptance-criteria.md#ac-cx-09--illegal-cancellations-are-rejected) |
-| `domain/errors.ts` | The `AppError` hierarchy | — |
 
 **No I/O, no Prisma, no Express, no `Date.now()`.** A time source is a parameter. If a rule is hard to
 unit test here, it has leaked back into a service.
+
+**The `AppError` hierarchy (`errors/errors.ts`) is not here** — it computes nothing, and lives in
+its own folder. See "Error handling architecture" in
+[architecture-specification.md](./architecture-specification.md#error-handling-architecture).
 
 ---
 

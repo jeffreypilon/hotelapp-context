@@ -47,7 +47,7 @@ the string even when the level is disabled.
 
 ## `traceId` via the MDC
 
-Generated in `web/TraceIdFilter` — ordered **first** — and placed in the SLF4J MDC, which the JSON
+Generated in `security/TraceIdFilter` — ordered **first** — and placed in the SLF4J MDC, which the JSON
 encoder includes on every line automatically.
 
 | Rule | Why |

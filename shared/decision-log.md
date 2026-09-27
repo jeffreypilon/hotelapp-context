@@ -274,6 +274,48 @@ shape and why the split matters, not just the new location.
 
 ---
 
+## 5. Spring Boot package layout: a single `web/` package → `controller/` + `security/`
+
+**Decided:** `stacks/springboot/architecture-specification.md`'s package layout put every
+HTTP-adjacent class in one `web/` package: the controllers, the two servlet filters
+(`TraceIdFilter`, `SessionAuthFilter`), the two Spring Security hooks
+(`CustomAuthenticationEntryPoint`, `CustomAccessDeniedHandler`), an auth-principal type and a
+cookie helper, and the exception-to-response translation classes
+(`ProblemDetailExceptionHandler`, `ProblemResponseWriter`). Built on directly: by Phase 6 Step 4,
+`hotelapp-server-springboot`'s `web/` package held eight controllers plus eight non-controller
+classes doing four distinct jobs.
+
+**Reversed:** Found by inspecting the built repository against what the sibling Node backend's
+own spec already does. `stacks/nodejs/architecture-specification.md` has always kept `middleware/`
+(request-pipeline infrastructure) and `routes/` (endpoint definitions) as separate top-level
+folders — Express's own request-handling model forces the distinction, so Phase 4 never had the
+chance to make this mistake on the Node side the way it did on the Spring Boot side, where nothing
+in the framework forces controllers and filters apart. Unlike entry 4, this was **not** a mistake
+shared by both stacks — Node was already right, which is itself evidence the split is a reasonable
+architecture and not just a stylistic preference.
+
+**Replaced with:** `controller/` (the endpoint classes, unchanged internally) and `security/` (the
+filters, the Spring Security hooks, the auth principal and cookie helper, and the exception
+handler/writer), both top-level, no `web/` umbrella — matching Node's sibling-folder shape so the
+two backends compare directly, which is this project's standing reason for keeping structure
+aligned across stacks. `ProblemDetailExceptionHandler` went to `security/`, not `exception/`
+(entry 4's new package), on the same reasoning as Node's `errorHandler.ts` living in `middleware/`
+rather than beside `AppError`: it is pipeline infrastructure that consumes the exception
+vocabulary, not part of the vocabulary itself. Specified in
+[architecture-specification.md](../stacks/springboot/architecture-specification.md#package-layout).
+
+**What changed as a result:**
+
+- `stacks/springboot/module-registry.md`, `error-handling.md`, `logging-observability.md`, and
+  `security-implementation.md` all had stale `web/ClassName` references corrected to
+  `security/ClassName`.
+- The actual code in `hotelapp-server-springboot` needs the same kind of mechanical refactor as
+  entry 4 — moving files and updating imports across `service/` and the moved files themselves —
+  since four backend steps were built on the old layout.
+- Node needed no spec change here, unlike entry 4 — its layout was already correct.
+
+---
+
 ## Considered and excluded
 
 Recorded so they are not re-added: each was assessed against the "decided, then reversed" test

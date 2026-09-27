@@ -312,10 +312,10 @@ Java, Spring Boot, Spring Data JPA. Structure per
 
 | Concern | Location |
 |---------|----------|
-| `traceId` generation | `web/TraceIdFilter` — ordered first, puts the id in the MDC |
+| `traceId` generation | `security/TraceIdFilter` — ordered first, puts the id in the MDC |
 | Schema validation | Bean Validation annotations on request DTOs, plus `@Validated` on controllers |
 | Domain failures | `AppException` subclasses thrown from the service layer |
-| JPA / SQL translation | `web/ProblemDetailExceptionHandler` |
+| JPA / SQL translation | `security/ProblemDetailExceptionHandler` |
 | Problem Details serialization | the same `@RestControllerAdvice` |
 
 ### The advantage, and the trap

@@ -69,8 +69,8 @@ frontends, two backends, one database, REST as the only integration point — is
 
 ```
 HTTP layer          Routing, request binding, validation, status codes,
-web/                Problem Details serialization.
-                    Knows HTTP. Knows nothing about JPA.
+controller/,        Problem Details serialization.
+security/           Knows HTTP. Knows nothing about JPA.
       │
 Service layer       Business rules: pricing, policy, allocation, transitions.
 service/            OWNS TRANSACTION BOUNDARIES (@Transactional lives here).
@@ -120,15 +120,22 @@ com.hotelapp
     OpenApiConfig.java
     ClockConfig.java            Clock bean — REQUIRED, see below
 
-  web/
-    TraceIdFilter.java          Ordered first; traceId into the MDC
-    SessionAuthFilter.java      Cookie -> session+user; sets the SecurityContext
-    ProblemDetailExceptionHandler.java   @RestControllerAdvice
+  controller/
     AuthController.java  PropertyController.java  AvailabilityController.java
     ReservationController.java  MeController.java  HealthController.java
     admin/
       AdminReservationController.java  InventoryController.java
       RatePlanController.java  CalendarController.java  ReportController.java
+
+  security/
+    TraceIdFilter.java          Ordered first; traceId into the MDC
+    SessionAuthFilter.java      Cookie -> session+user; sets the SecurityContext
+    RequestLoggingFilter.java   One line per request, never bodies — not yet built
+    RateLimitFilter.java        Auth-route limiter — not yet built
+    CustomAuthenticationEntryPoint.java  CustomAccessDeniedHandler.java
+    AuthenticatedPrincipal.java  SessionCookies.java
+    ProblemDetailExceptionHandler.java   @RestControllerAdvice — see below
+    ProblemResponseWriter.java
 
   service/
     AuthService.java  SessionService.java  PropertyService.java
@@ -159,6 +166,21 @@ com.hotelapp
   dto/
     request/  response/  mapper/
 ```
+
+**`controller/` and `security/` replace a single `web/` package** — logged in
+[decision-log.md](../../shared/decision-log.md) entry 5. `web/` had mixed four distinct
+responsibilities under one name: endpoint definitions (the controllers), servlet-level filter-chain
+infrastructure (`TraceIdFilter`, `SessionAuthFilter`), Spring Security hooks
+(`CustomAuthenticationEntryPoint`, `CustomAccessDeniedHandler`), and exception-to-response
+translation (`ProblemDetailExceptionHandler`, `ProblemResponseWriter`). Those are not one thing —
+a controller handles one endpoint; the rest run for many or all requests regardless of which
+endpoint is hit. **The Node backend already gets this right** — `middleware/` and `routes/` are
+separate top-level folders there, because Express's own request-handling model forces the
+distinction. `controller/` mirrors `routes/`; `security/` mirrors `middleware/`.
+`ProblemDetailExceptionHandler` stays in `security/`, not `exception/`, for the same reason Node's
+`errorHandler.ts` stays in `middleware/` rather than wherever `AppError` is defined: it is
+request-pipeline infrastructure that happens to consume the exception vocabulary, not part of the
+vocabulary itself.
 
 **`domain/` holds the pure static functions and is the most important package in the repo.**
 Pricing, the cancellation deadline, allocation order, and legal status transitions are the four

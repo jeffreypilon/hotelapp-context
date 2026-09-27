@@ -48,7 +48,7 @@ specific traps. `config/SecurityConfig.java`:
 
 The whole authentication mechanism, per
 [api-contracts.md](../../shared/api-contracts.md#authentication). Implemented as
-`web/SessionAuthFilter`, sequence in
+`security/SessionAuthFilter`, sequence in
 [architecture-specification.md](./architecture-specification.md#session-handling).
 
 **Implemented as a filter, not through Spring Session or `RememberMe`.** Those abstractions would

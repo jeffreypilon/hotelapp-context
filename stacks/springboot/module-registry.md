@@ -29,15 +29,19 @@ fail any build and would each break something real — worth knowing as a set.
 
 ---
 
-## Web layer
+## Security layer
+
+`security/`, not `web/` — see "Package layout" in
+[architecture-specification.md](./architecture-specification.md) and decision-log.md entry 5.
+Controllers live in `controller/`, listed separately below.
 
 | Class | Owns |
 |-------|------|
-| `web/TraceIdFilter` | `traceId` into the **MDC**, ordered first, **cleared in a `finally`** |
-| `web/SessionAuthFilter` | Cookie → hash → `sessions` **joined to `users`** → validity → sliding expiry → `SecurityContext` |
-| `web/RequestLoggingFilter` | One line per request: method, route pattern, status, duration. **Never bodies** |
-| `web/RateLimitFilter` | 10 attempts / 15 min, keyed on IP **and** email, on the two auth routes |
-| `web/ProblemDetailExceptionHandler` | `@RestControllerAdvice`: `AppException`, validation, `DataIntegrityViolationException`, catch-all |
+| `security/TraceIdFilter` | `traceId` into the **MDC**, ordered first, **cleared in a `finally`** |
+| `security/SessionAuthFilter` | Cookie → hash → `sessions` **joined to `users`** → validity → sliding expiry → `SecurityContext` |
+| `security/RequestLoggingFilter` | One line per request: method, route pattern, status, duration. **Never bodies** |
+| `security/RateLimitFilter` | 10 attempts / 15 min, keyed on IP **and** email, on the two auth routes |
+| `security/ProblemDetailExceptionHandler` | `@RestControllerAdvice`: `AppException`, validation, `DataIntegrityViolationException`, catch-all |
 
 **`TraceIdFilter` must clear the MDC in a `finally`.** A pooled thread retaining a previous request's
 `traceId` attributes the next request's logs to the wrong one, which is worse than having no id —

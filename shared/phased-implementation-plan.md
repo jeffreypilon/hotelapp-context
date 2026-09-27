@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-5 done (skeleton, sessions, catalogue, availability, booking, reservation management), Spring Boot only; two structural refactors also done |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **Interleaved with Phase 6, not sequential from here** — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -552,6 +552,32 @@ time, now that both create and cancel exist. AC-CX-09's `CHECKED_IN`/`CHECKED_OU
 have no real endpoint (item 9) and are set via JDBC in the test fixture, same treatment Step 4
 gave AC-OB-05 — flagged for re-verification once that step lands.
 
+### Step 6 (guest profile and password change) — done 2026-09-27, Spring Boot only
+
+`hotelapp-server-springboot@081881a`. `GET /me`, `PATCH /me`, `PUT /me/password` — the last
+guest-facing item; **Spring Boot's guest-facing slice (Phase 6 items 1-8) is now complete.**
+`mvn verify`: 74 IT tests, 0 failures, 0 errors — added `ProfileIT` (9) on top of Step 5's suite.
+
+`PATCH /me`'s "omitted is unchanged, explicit `null` clears it" semantics — inexpressible with a
+typed request record — solved by binding the body as a raw `JsonNode` (this project is on
+Jackson 3, `tools.jackson.*`; the implementer confirmed the actual API via `javap` rather than
+assuming Jackson 2 method names). Binding as `JsonNode` bypasses the global
+`fail-on-unknown-properties` config, so `ProfileService` manually rejects any key outside
+`firstName`/`lastName`/`phone`/`address` (and, as a nice extra, unknown keys *inside* `address`
+too) with `400 VALIDATION_FAILED` — this is what actually satisfies
+[AC-AZ-09](./acceptance-criteria.md#ac-az-09--registration-cannot-escalate)'s second half
+(`role`/`isActive` rejected via `PATCH /me`, not silently ignored).
+
+**Judgment call, flagged rather than silently decided:** `address`, when present in a `PATCH`
+body at all, replaces the whole sub-object rather than merging field-by-field — consistent with
+how this contract treats other sub-objects elsewhere (`PUT /admin/.../rate-plans`). Documented
+in code and covered by a dedicated test.
+
+The common-password deny-list was extracted from `AuthService` into `domain/PasswordPolicy.java`
+(pure, no I/O) so registration and password-change share one list. `SessionService.revokeAllExcept`
+— built in Step 1, unit-tested but never called over HTTP — is exercised through real HTTP for
+the first time here, closing that gap.
+
 **Done means:** Step 0's slice ran and its findings were folded back into
 [api-contracts.md](./api-contracts.md); both backends pass every criterion in
 [acceptance-criteria.md](./acceptance-criteria.md); the OpenAPI diff is clean; CI is green in
@@ -569,9 +595,9 @@ both repos; both serve identical responses to the same requests against the same
 > vertical as early as possible, so an unfinished project still has one fully working thing to
 > show rather than four partially-done ones.
 >
-> **The revised order:** finish Spring Boot's guest-facing slice only (Phase 6 items 1-8 —
-> done through item 7; item 8, guest profile/password, is next) — Phase 6 items 9-12 (admin,
-> reporting, cross-cutting) wait. Then build React's guest-facing screens (Phase 7 items 1-6)
+> **The revised order:** finish Spring Boot's guest-facing slice only (Phase 6 items 1-8 — **done,
+> as of Step 6**) — Phase 6 items 9-12 (admin, reporting, cross-cutting) wait. Then build React's
+> guest-facing screens (Phase 7 items 1-6)
 > against that slice — **this is the first "one full stack working" milestone**, worth protecting
 > if time runs short. Then Node's guest-facing slice, to the same point Spring Boot reached,
 > unlocking [AC-SE-05](./acceptance-criteria.md#ac-se-05--a-session-works-interchangeably-against-both-backends)

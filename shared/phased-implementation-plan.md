@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0 (skeleton), 1 (sessions), 2 (public catalogue) done, Spring Boot only |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0 (skeleton), 1 (sessions), 2 (catalogue), 3 (availability) done, Spring Boot only |
 | 7 | Frontend implementation | ⬜ |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -447,6 +447,38 @@ Interpreted as the flat room-type fields without the `amenities`/`photos` collec
 (`RoomTypeSummaryResponse`) — worth confirming against the frontends' actual needs before that
 shape is relied on in Phase 7.
 
+### Step 3 (availability search) — done 2026-09-27, Spring Boot only
+
+`hotelapp-server-springboot@7f86d37`. `GET /availability` — the parameterized native query
+implementing [data-model.md](./data-model.md#no-overbooking)'s literal anti-join shape
+(`NamedParameterJdbcTemplate`, no string-built SQL), extended with `roomTypeCode`,
+`accessibleOnly`, `amenityCode` (all-match), `minNightlyRate`/`maxNightlyRate` (applied to the
+discounted rate, in application code), and sorting/pagination in memory given the small
+per-property room-type cardinality. `mvn verify`: 34 IT tests run (0 failures, 0 errors) —
+`AuthControllerIT` (11) + `AvailabilityIT` (8) + `PropertyControllerIT` (2) +
+`PublicCatalogueIT` (13) — plus 2 unit tests (`PricingTest`), run twice for stability.
+
+**Pricing built as reusable pure domain logic** (`domain/Pricing.java`, no Spring/JPA), for reuse
+unchanged by `POST /reservations` in Step 6. [AC-CX-10](./acceptance-criteria.md#ac-cx-10--pricing-arithmetic-and-rounding-order)'s
+rounding-order requirement is unit-tested with **both** required cases — the 249.00/10%/3-nights
+case, and the 100.01/33.33%/3-nights case that actually distinguishes rounding-then-multiplying
+from multiplying-then-rounding, since the first case alone doesn't prove the order matters.
+
+**The query-plan requirement from [non-functional-requirements.md](./non-functional-requirements.md#response-time-targets)
+was met as an automated assertion, not a manual check**: `AvailabilityIT` seeds 2,000 synthetic
+reservations, runs `ANALYZE`, then runs `EXPLAIN (ANALYZE, BUFFERS)` against the *exact same*
+query method the production path calls, and asserts the plan uses the
+`reservations_no_overlap_excl` GiST index rather than a sequential scan on `reservations`.
+
+**Judgment call, flagged rather than silently decided:** the contract doesn't specify what happens
+when a requested `rateCategory` has no active `rate_plans` row for that property. Decided as a 0%
+discount (same as `NONE`); the room type stays in results rather than being excluded. Documented in
+`Pricing.java`'s javadoc and covered by a dedicated integration test (requesting `AARP` where no
+plan exists).
+
+No contract or migration mismatch was found this step — `rooms` and `rate_plans` matched what
+Step 2's already-applied `V001` implied.
+
 **Done means:** Step 0's slice ran and its findings were folded back into
 [api-contracts.md](./api-contracts.md); both backends pass every criterion in
 [acceptance-criteria.md](./acceptance-criteria.md); the OpenAPI diff is clean; CI is green in
@@ -509,8 +541,8 @@ the guest in, and see the calendar update — against either backend, from eithe
    string against the raw response body). **No endpoint built so far returns a persisted date** —
    this is the one live item on this list, and it carries forward to whichever step first returns
    one, earliest candidate `POST /reservations` (Phase 6 item 6).
-2. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Step 0
-   and Step 1 were both built against Spring Boot first, per the migration asymmetry: the
+2. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Steps 0
+   through 3 were all built against Spring Boot first, per the migration asymmetry: the
    Flyway-owning backend had to make the schema real before Prisma has anything to introspect.
    The Node backend has not been started.
 3. **No end-to-end browser testing.** The one acknowledged gap in the test strategy, named in

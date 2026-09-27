@@ -309,7 +309,34 @@ Build both backends. **One at a time, and the harder one first.**
 > ownership asymmetry at the least convenient moment. This is a recommendation, not a fixed
 > decision — worth confirming before Phase 6 starts.
 
-Suggested order within each backend, each step ending somewhere demonstrable:
+### Step 0 — A walking skeleton that reaches a browser, before anything else
+
+> **Do this first, and do not let it slide.** Before continuing down the backend, get **one thin
+> vertical slice running end to end**: `V001` applied to a real database, `GET /properties`
+> answering, and **one React screen rendering the result in a browser**. Nothing else — no auth, no
+> second backend, no second frontend, no styling, no CI.
+>
+> **Why it earns its place ahead of eleven steps of backend work.** This project specified 59
+> documents before any code existed, so **the API contract has never been validated against a
+> client**. That is the single largest unvalidated assumption in the project, and this is the
+> cheapest point at which to test it. A response shape that is awkward to consume, a money string
+> that does not round-trip, or a date that shifts by a day is far cheaper to find now than after
+> eleven more endpoints have copied the pattern.
+>
+> It is also the moment the Prisma-side risks become real rather than theoretical: whether
+> introspection produces a usable client, and whether the `Unsupported("daterange")` mapping behaves
+> as [data-model.md](./data-model.md#no-overbooking) predicts.
+>
+> **Done when:** one command starts a database and a backend, and a browser shows seeded properties
+> fetched over HTTP. **Then write down what it taught you**, and fold any contract correction into
+> [api-contracts.md](./api-contracts.md) before resuming — a correction deferred past this point
+> gets made in four repositories instead of one.
+>
+> This is the walking-skeleton step the project skipped earlier; the reasoning and the general
+> practice are recorded in `claude-memory/AI Assisted Software Architecture Approach.md`. Arriving
+> at Phase 6 is the last cheap opportunity to take it.
+
+Suggested order within each backend after that, each step ending somewhere demonstrable:
 
 1. Project skeleton, configuration, database connection, `GET /health`.
 2. Migrations applied; entities or Prisma models generated; schema validation passing.
@@ -328,7 +355,8 @@ Suggested order within each backend, each step ending somewhere demonstrable:
 11. Admin calendar and reports.
 12. Cross-cutting: security headers, CORS, rate limiting, log masking, OpenAPI document.
 
-**Done means:** both backends pass every criterion in
+**Done means:** Step 0's slice ran and its findings were folded back into
+[api-contracts.md](./api-contracts.md); both backends pass every criterion in
 [acceptance-criteria.md](./acceptance-criteria.md); the OpenAPI diff is clean; CI is green in
 both repos; both serve identical responses to the same requests against the same database.
 

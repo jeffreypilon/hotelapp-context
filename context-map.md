@@ -43,7 +43,7 @@ Those three are the project. Everything else elaborates them.
 | [versioning-strategy.md](./shared/versioning-strategy.md) | Changing the API or the schema | Breaking-change definition, why no `/v2` exists, **migration ownership: Flyway executes, Prisma introspects** |
 | [devops-pipeline-overview.md](./shared/devops-pipeline-overview.md) | Setting up CI | Per-repo jobs, the OpenAPI diff, the Compose smoke test |
 | [phased-implementation-plan.md](./shared/phased-implementation-plan.md) | Asking "what's next" | Build order, per-phase definition of done, open items |
-| [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | **Stub.** Intended for *reversed* decisions |
+| [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | *Reversed* decisions only — three entries: dropped free-tier hosting, JWT→sessions, migration ownership |
 
 ---
 

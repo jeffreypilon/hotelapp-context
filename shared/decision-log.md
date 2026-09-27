@@ -195,8 +195,8 @@ Prisma consumes the schema by introspection — `prisma db pull`, with `prisma m
 **What changed as a result:**
 
 - The canonical schema moved **out of both backend repos** and into this one, making
-  `shared/migrations/` the first code-shaped artifact this repository will hold. It does not
-  exist yet; `V001__initial_schema.sql` is a Phase 4 deliverable.
+  `shared/migrations/` the first code-shaped artifact this repository holds. Delivered as
+  `V001__initial_schema.sql` (`281365f`), the Phase 4 deliverable this decision required.
 - **The two backends stopped being peers.** The Node backend can no longer migrate a database
   unaided — it needs Flyway to have run first, from the Spring Boot repo or as a standalone
   Flyway invocation. This is the only asymmetry between the two implementations anywhere in the

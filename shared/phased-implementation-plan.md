@@ -19,9 +19,9 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 1b | Auth redesign: JWT → server-side sessions | ✅ Done |
 | 2 | The remaining nine `shared/` documents | ✅ Done (this document is part of it) |
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
-| 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, **one deliverable outstanding** (see below) |
-| 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ⬜ **Next** |
-| 6 | Backend implementation | ⬜ |
+| 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
+| 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
+| 6 | Backend implementation | ⬜ **In progress** — Step 0 (walking skeleton) and Step 1 (sessions) done, Spring Boot only |
 | 7 | Frontend implementation | ⬜ |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -253,31 +253,31 @@ gesture:
 7. Both stacks' `environment-setup-guide.md` takes a reader from clone to a running API with a
    seeded database.
 
-**Outcome against those criteria.** Items 1–5 and 7 are met. **Item 6 is not.**
+**Outcome against those criteria.** All seven are met, including item 6 — resolved after this
+section was originally written, and confirmed here.
 
-> ### Outstanding: `shared/migrations/` does not exist
+> ### Resolved: `shared/migrations/V001__initial_schema.sql` — done 2026-09-27
 >
-> No `V001__initial_schema.sql`, and no `shared/migrations/` directory. The schema is still prose in
-> [data-model.md](./data-model.md), and every document that depends on the canonical SQL —
-> both `environment-setup-guide.md` files, both `devops-pipeline.md` files, both
-> `testing-standards.md` files, and the Spring build's copy step — references a path that is not
-> there yet.
+> Delivered as recommended, before Phase 5: 515 lines, 11 tables, 5 enums, 36 indexes,
+> `btree_gist`, the generated `stay_period` column, the `reservations_no_overlap_excl` partial
+> exclusion constraint, both composite FKs, and the seven `amenities` rows. Commit `281365f`.
 >
-> **Nothing downstream can run until it exists.** It is the first thing Phase 6 needs, it is
-> required before either backend's CI can be green, and it is the only remaining item that turns
-> the specification into something executable. Writing it is a mechanical transcription of
-> [data-model.md](./data-model.md) — the DDL is already written out there, including the
-> `btree_gist` extension, the generated `stay_period` column, the exclusion constraint, the
-> composite foreign keys, and the partial and functional indexes — plus the seven `amenities` rows,
-> which belong in a migration because their codes are a contract.
+> **Verified by execution, not review**, before being counted as done: applied to a throwaway
+> PostgreSQL 18.6 database with `ON_ERROR_STOP=1`, then 16 behavioural tests — adjacent stays
+> succeed, four overlap shapes give `23P01`, cancel-then-rebook succeeds, the
+> role/status/date/rate-category CHECKs and composite FKs each reject, and `EXPLAIN` confirmed an
+> Index Only Scan using `reservations_no_overlap_excl` for the availability query. Database
+> dropped afterwards.
 >
-> **Recommendation: do this before Phase 5**, not during Phase 6. It is small, it is the one
-> deliverable that unblocks everything else, and leaving it until implementation means discovering
-> transcription errors at the moment they are most expensive.
+> Four deviations from a literal transcription, each commented in the file: `confirmation_number`
+> UNIQUE declared once rather than duplicated as a separate index (the two would have collided);
+> `properties_id_key` omitted as redundant with the PK; `users.email` functional index only; and
+> the table-level date CHECK named explicitly (`reservations_dates_chk`) rather than left to
+> PostgreSQL's opaque auto-naming.
 
 ---
 
-## Phase 5 — Per-repo agent instructions ⬜
+## Phase 5 — Per-repo agent instructions ✅
 
 **Scope:** `copilot-instructions.md` and/or `CLAUDE.md` in each of the four implementation
 repos, plus this one.
@@ -296,9 +296,15 @@ in-repo files may be `@`-imported.
 X", finds its way to the right specification documents without being told they exist — and
 verifiably so, tested in a clean session per repo rather than assumed.
 
+**Outcome — done 2026-09-27.** All five repos have both `.github/copilot-instructions.md` and a
+`CLAUDE.md` that `@import`s it: react `ecbcd7a`, angular `002097d`, nodejs `af20489`, springboot
+`f8e130b`, this repo `bfdb279`. Shared blocks across the four implementation repos are
+byte-identical by md5. The `@`-import constraint above was discovered during this phase, not
+before it.
+
 ---
 
-## Phase 6 — Backend implementation ⬜
+## Phase 6 — Backend implementation ⬜ **in progress**
 
 Build both backends. **One at a time, and the harder one first.**
 
@@ -366,9 +372,17 @@ step, but it is a correction to what it proves.
 
 **Two smaller outcomes.** Spring Boot's current stable is **4.1.1** (21 Aug 2026), not the 3.x these
 documents assumed — references were corrected, and `TestRestTemplate` is gone in favour of
-`RestTestClient`. And `mvn verify` could not run: **Docker is not installed**, so Testcontainers
-cannot start. That blocks the acceptance-criteria tests from Step 1 onward and needs resolving before
-Step 3.
+`RestTestClient`. And `mvn verify` could not run at Step 0 time: **Docker was not installed**, so
+Testcontainers could not start.
+
+> **Resolved in Step 1.** Docker Desktop was installed; `mvn verify` then failed a second time
+> because `pom.xml` pinned `testcontainers-bom` to `1.21.3`, overriding Spring Boot's own parent
+> BOM and defaulting docker-java to Docker API 1.32 against a Docker 29 daemon that requires
+> ≥1.40. Removing the pin resolved Testcontainers 2.x (`testcontainers-junit-jupiter` /
+> `testcontainers-postgresql`). `PropertyControllerIT` — written in Step 0 but never executed
+> then — ran clean as part of Step 1's `mvn verify` (`Tests run: 2, Failures: 0, Errors: 0`,
+> read directly from the failsafe report), so the walking skeleton's own integration test is now
+> confirmed, not just the manual browser check.
 
 Suggested order within each backend after that, each step ending somewhere demonstrable:
 
@@ -388,6 +402,22 @@ Suggested order within each backend after that, each step ending somewhere demon
 10. Admin inventory: properties, room types, rooms, photos, rate plans.
 11. Admin calendar and reports.
 12. Cross-cutting: security headers, CORS, rate limiting, log masking, OpenAPI document.
+
+### Step 1 (sessions) — done 2026-09-27, Spring Boot only
+
+`hotelapp-server-springboot@744df5a`. `POST /auth/register`, `POST /auth/login`, `POST
+/auth/logout`, `GET /auth/me`. `mvn verify`: 13 run, 0 failures, 0 errors —
+`AuthControllerIT` (11) plus `PropertyControllerIT` (2), run twice for stability.
+
+AC-SE-01/02/03/04/06/08/09/10 and AC-AZ-11 verified over real HTTP. AC-SE-05 (the
+cross-backend interchangeability guarantee) has its single-process half done via raw JDBC
+against this backend only — per this document's own step 3 note, it cannot be verified
+cross-backend until the Node backend reaches this same step. AC-SE-07 (revoke-all-except) is
+exercised at the service level only, since `PUT /me/password` is out of this step's scope;
+re-test through HTTP once that endpoint exists.
+
+Unlike Step 0, Step 1 found no contract defect — nothing was folded back into
+[api-contracts.md](./api-contracts.md).
 
 **Done means:** Step 0's slice ran and its findings were folded back into
 [api-contracts.md](./api-contracts.md); both backends pass every criterion in
@@ -444,14 +474,17 @@ the guest in, and see the calendar update — against either backend, from eithe
 
 ---
 
-## Open items carried into Phase 5
+## Open items carried into Phase 6
 
-1. **`shared/migrations/V001__initial_schema.sql` does not exist** — the one unmet Phase 4
-   criterion, detailed above. **This is the only blocker in the list**, and the recommendation is
-   to write it before Phase 5 rather than during Phase 6.
-2. **Spring Boot before Node in Phase 6** — recommended below, still not formally confirmed.
-   Follows from the migration asymmetry: the Flyway-owning backend has to make the schema real
-   before Prisma has anything to introspect.
+1. **Money and date serialization remain unvalidated.** Phase 6 Step 0 found the nullable-field
+   defect but `GET /properties` carries neither a money nor a date field, so neither of the
+   project's two riskiest serialization rules has actually been exercised yet. **This is the one
+   live blocker-shaped item on this list** — the first endpoint returning `baseRate` must verify
+   both explicitly, per the carry-forward requirement in the Phase 6 outcome above.
+2. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Step 0
+   and Step 1 were both built against Spring Boot first, per the migration asymmetry: the
+   Flyway-owning backend had to make the schema real before Prisma has anything to introspect.
+   The Node backend has not been started.
 3. **No end-to-end browser testing.** The one acknowledged gap in the test strategy, named in
    [devops-pipeline-overview.md](./devops-pipeline-overview.md#deliberately-absent) and in all four
    stacks' `testing-standards.md`. Fine to carry; worth deciding deliberately rather than by
@@ -472,6 +505,15 @@ the guest in, and see the calendar update — against either backend, from eithe
   probably got wrong.
 - **Migration ownership** was reviewed and carried into all 20 Phase 4 documents, with its
   consequences made explicit in both directions rather than mentioned once.
+
+### Resolved since Phase 4
+
+- **`shared/migrations/V001__initial_schema.sql`** now exists (`281365f`), verified by execution
+  against a throwaway database — see the Phase 4 outcome above.
+- **Phase 5** is done: all five repos carry agent instructions, verified by file presence and
+  md5-identical shared blocks.
+- **Docker / Testcontainers** was blocked at Step 0 (Docker not installed) and again at Step 1
+  (a stale `testcontainers-bom` pin); both are resolved — see the Phase 6 outcome above.
 
 ---
 

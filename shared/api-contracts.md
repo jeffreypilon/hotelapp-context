@@ -1096,7 +1096,7 @@ what bounds the response instead.
       "roomId": "0192f3a6-5500-7000-8000-000000000041",
       "roomNumber": "412",
       "roomType": { "id": "0192f3a3-2200-7000-8000-000000000011", "code": "KING", "name": "Deluxe King, Harbor View" },
-      "nightlyRate": "249.00",
+      "baseRate": "249.00",
       "isOutOfService": false,
       "occupancy": [
         {
@@ -1116,8 +1116,12 @@ what bounds the response instead.
 Each room carries the reservation *segments* intersecting the window rather than one entry
 per date. A 60-day window for 200 rooms is 12,000 cells but only a few hundred segments;
 the client expands segments into grid cells, which is cheap. Segments may extend past
-`from`/`to` — the client clips them. `nightlyRate` is the room type's current `baseRate`,
-which is the "rate" half of "room/rate calendar".
+`from`/`to` — the client clips them. `baseRate` is the room type's current rate, undiscounted —
+the calendar has no guest or `rateCategory` in play, unlike `GET /availability` and
+`POST /reservations`, where `nightlyRate` names the *discounted* per-night price. Naming this
+field `baseRate` rather than reusing `nightlyRate` is deliberate: the same name meaning two
+different things across endpoints is exactly the kind of thing that drifts invisibly between two
+independent implementations. This is the "rate" half of "room/rate calendar".
 
 ### `GET /admin/properties/{propertyId}/reports/occupancy` — Staff
 

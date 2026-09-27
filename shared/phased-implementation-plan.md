@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-5 done (skeleton, sessions, catalogue, availability, booking, reservation management), Spring Boot only; two structural refactors also done |
-| 7 | Frontend implementation | ⬜ |
+| 7 | Frontend implementation | ⬜ **Interleaved with Phase 6, not sequential from here** — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -558,6 +558,34 @@ gave AC-OB-05 — flagged for re-verification once that step lands.
 both repos; both serve identical responses to the same requests against the same database.
 
 ---
+
+> **Design Decision — interleaving Phase 6 and Phase 7 rather than finishing each fully in
+> order, driven by an interview deadline (2026-09-27).** The order below, and Phase 6's own
+> suggested order, both assume finishing one phase before starting the next. That reasoning
+> (contract before implementation, backends before frontends, since "the interesting
+> correctness lives in the backends") **still holds** — this is not a reversal of it, and
+> nothing built so far was built against an assumption this now breaks. It is a re-prioritization
+> for a specific goal a strict phase order doesn't optimize for: having a complete, demoable
+> vertical as early as possible, so an unfinished project still has one fully working thing to
+> show rather than four partially-done ones.
+>
+> **The revised order:** finish Spring Boot's guest-facing slice only (Phase 6 items 1-8 —
+> done through item 7; item 8, guest profile/password, is next) — Phase 6 items 9-12 (admin,
+> reporting, cross-cutting) wait. Then build React's guest-facing screens (Phase 7 items 1-6)
+> against that slice — **this is the first "one full stack working" milestone**, worth protecting
+> if time runs short. Then Node's guest-facing slice, to the same point Spring Boot reached,
+> unlocking [AC-SE-05](./acceptance-criteria.md#ac-se-05--a-session-works-interchangeably-against-both-backends)
+> — "the clearest thirty-second proof that the two backends implement one API" — and the Phase 8
+> two-backend concurrency race, live rather than merely specified. Then Angular's guest-facing
+> screens, benefiting from React's now-validated UX and any contract fixes React's build
+> surfaced. **Only then** circle back for both backends' admin endpoints, both frontends' admin
+> screens, and Phase 8 integration — the most legitimately cuttable layer if the calendar runs
+> out before the interview does.
+>
+> **The one discipline to keep across this re-sequencing**: a UX or contract gap React's build
+> discovers gets fixed in `ui-specifications.md`/`api-contracts.md` themselves, not worked around
+> silently and then copied into Angular's build unexamined — a shim in one client is drift with
+> extra steps, per Phase 3's own outcome notes above.
 
 ## Phase 7 — Frontend implementation ⬜
 

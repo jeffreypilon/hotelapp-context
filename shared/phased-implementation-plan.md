@@ -18,9 +18,9 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 1a | `shared/data-model.md`, `shared/api-contracts.md` | ✅ Done |
 | 1b | Auth redesign: JWT → server-side sessions | ✅ Done |
 | 2 | The remaining nine `shared/` documents | ✅ Done (this document is part of it) |
-| 3 | `stacks/react/` + `stacks/angular/` | ⬜ Next |
-| 4 | `stacks/nodejs/` + `stacks/springboot/` | ⬜ |
-| 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ⬜ |
+| 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
+| 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, **one deliverable outstanding** (see below) |
+| 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ⬜ **Next** |
 | 6 | Backend implementation | ⬜ |
 | 7 | Frontend implementation | ⬜ |
 | 8 | Integration, smoke test, polish | ⬜ |
@@ -71,25 +71,46 @@ The remaining nine `shared/` documents:
 | [architecture-overview.md](./architecture-overview.md) | System shape, request flow, where logic lives, the four drift-prevention layers |
 | [security-principles.md](./security-principles.md) | Threat model, password and lockout policy, CORS, validation, injection, secrets, headers, and the out-of-scope line |
 | [non-functional-requirements.md](./non-functional-requirements.md) | Demo-scale volumes, response targets, the plainly-stated absence of high availability, browser matrix |
-| [acceptance-criteria.md](./acceptance-criteria.md) | 40+ Given/When/Then criteria across no-overbooking, the cancellation boundary, authorization, and sessions |
+| [acceptance-criteria.md](./acceptance-criteria.md) | 44 Given/When/Then criteria across no-overbooking, the cancellation boundary, authorization, and sessions |
 | [versioning-strategy.md](./versioning-strategy.md) | Breaking-change policy, why no `/v2` is built, and the one-executor migration rule |
 | [devops-pipeline-overview.md](./devops-pipeline-overview.md) | Per-repo CI, the OpenAPI diff, the Compose smoke test |
 | [phased-implementation-plan.md](./phased-implementation-plan.md) | This document |
 
-`shared/decision-log.md` remains a stub — see
-[Open items](#open-items-carried-into-phase-3).
+`shared/decision-log.md` was outside Phase 2's scope and was populated immediately afterwards,
+with three reversals: the dropped free-tier hosting goal, the Phase 1b session redesign, and the
+migration-ownership change below.
 
 **Phase 2's most consequential new decision** is the migration ownership rule in
 [versioning-strategy.md](./versioning-strategy.md#database-schema-migrations): canonical
 numbered SQL lives in this repo, Flyway is the only executor, and Prisma consumes the schema by
-introspection rather than authoring it. That constrains Phase 4 on both backends and should be
-reviewed before Phase 4 begins.
+introspection rather than authoring it. It went on to shape every Phase 4 document, and is
+recorded as a reversal in [decision-log.md](./decision-log.md) because it overturned the Phase 1a
+assumption that each backend would carry its own migrations.
 
 ---
 
-## Phase 3 — Frontend stack specifications ⬜
+## Phase 3 — Frontend stack specifications ✅
 
-**Scope:** `stacks/react/` and `stacks/angular/`, twelve documents each.
+**Scope:** `stacks/react/` and `stacks/angular/`, twelve documents each. **All 24 written.**
+
+> **Delivered in two passes**, deliberately split because 24 documents in one pass risked the
+> cross-stack drift the phase exists to prevent. Pass 1 took the three decision-bearing documents
+> per stack (`ui-specifications`, `state-management`, `architecture-specification`); pass 2 took
+> the remaining nine, which are per-stack conventions downstream of those.
+>
+> **Two pairs are byte-identical over their shared sections**, built from one shared body rather
+> than written twice and hoped to match: `ui-specifications.md` §1–2, and `error-handling.md`
+> §1–4 so a guest sees the same message text in either client.
+>
+> **State management was the open question and is now decided with reasoning.** React: TanStack
+> Query v5, no Redux-style store, and deliberately **no optimistic updates** — every mutation here
+> can be refused for a reason the client cannot predict. Angular: NgRx **SignalStore**, with
+> classic NgRx declined because ~42 endpoints of action/reducer/effect/selector ceremony buys
+> time-travel and global traceability this project has no use for.
+>
+> **The one asymmetry that emerged:** TanStack Query gives the React client caching for free, so
+> Angular's cache semantics had to be written as explicit policy to keep observable behavior
+> matched. That is an ecosystem consequence, not a requirements divergence.
 
 **Written together, not sequentially.** The two frontends must deliver the same features,
 screens, and UI copy with different frameworks. Writing React's specification first and
@@ -142,17 +163,52 @@ must come from
 7. No contract changes were needed — or, if any were, they were made in
    [api-contracts.md](./api-contracts.md) first and are listed in the phase summary.
 
-**Risk to watch.** Phase 3 is the most likely place to discover the API contract is missing
-something, because it is the first time anyone walks the actual screens. That is the point of
-doing it before implementation. The rule: **change the contract, do not work around it in a
-frontend specification.** A shim in one client is drift with extra steps.
+**Outcome against those criteria.** All seven met, with two findings worth carrying forward:
+
+- **Item 3, the endpoint cross-check:** 41 of 42 endpoints are consumed by a specified screen.
+  The exception is `GET /health`, which is correct — it is an operational endpoint whose purpose
+  is letting a tester confirm which backend answered. `GET /room-types/{id}` is the closest thing
+  to surplus surface, since its data is nearly all present in the property's room-types list; it
+  is retained for a direct-load, shareable route.
+- **Item 7:** no contract change was needed. The screens fit the contract as written.
+- Sixteen screens were specified, S0–S15 — two more than the phase scope listed, because the app
+  shell (session bootstrap and the global `401` rule) and the not-found/error routes both needed
+  specifying and belonged to no other screen.
+
+**The risk this phase was watching for did not materialize.** It was the most likely place to
+discover the API contract was missing something, since it is the first time anyone walks the
+actual screens. The rule stood and was not needed: **change the contract, do not work around it
+in a frontend specification.** A shim in one client is drift with extra steps.
 
 ---
 
-## Phase 4 — Backend stack specifications ⬜
+## Phase 4 — Backend stack specifications ✅ (one deliverable outstanding)
 
 **Scope:** `stacks/nodejs/` and `stacks/springboot/`, ten documents each — the same list as
-Phase 3 minus `ui-specifications.md` and `state-management.md`.
+Phase 3 minus `ui-specifications.md` and `state-management.md`. **All 20 written.**
+
+> **Delivered in two passes**, same reasoning as Phase 3. Pass 1: `architecture-specification`,
+> `coding-standards`, `error-handling`, `testing-standards`. Pass 2: the remaining six.
+>
+> **Two more byte-identical pairs**, built from one shared body: `error-handling.md` §1–5, so both
+> backends emit the same status, `code`, `title`, and `detail` for the same condition; and
+> `testing-standards.md` §1–5, so both satisfy the same 44 criteria at the same layers.
+>
+> **The migration asymmetry is carried through rather than smoothed over**, which was the phase's
+> main discipline. The Node setup guide opens by stating it cannot create its own schema; its CI
+> needs a second checkout of this repo plus the Flyway CLI; and it needs a `schema.prisma` drift
+> check that the Spring repo gets free from `ddl-auto=validate`. The Spring documents state the
+> converse — it is the **more privileged** backend, because it alone needs DDL rights, with a
+> two-role database setup recommended to bound that privilege to startup.
+>
+> **The finding this phase produced:** Prisma has **no mapped error code for SQLSTATE `23P01`**, so
+> the Node backend detects an exclusion-constraint violation via a raw-query error code or by
+> matching message text, where Spring reads `SQLException.getSQLState()` as structured data. The
+> integrity guarantee is unaffected — the constraint is enforced by PostgreSQL and a failure to
+> classify yields `500` instead of `409`, fail-closed either way — but it makes
+> [AC-OB-01](./acceptance-criteria.md#ac-ob-01--two-concurrent-bookings-for-the-last-room-exactly-one-wins)
+> against real PostgreSQL the only guard on the project's central guarantee in that stack, and it is
+> why mocking the Prisma client is prohibited there. Cross-referenced from nine stack documents.
 
 Also written together, for the same reason: two implementations of one contract, where the
 interesting content is how each stack satisfies a shared requirement.
@@ -196,6 +252,28 @@ gesture:
    deliverable, and the point at which the schema stops being prose.
 7. Both stacks' `environment-setup-guide.md` takes a reader from clone to a running API with a
    seeded database.
+
+**Outcome against those criteria.** Items 1–5 and 7 are met. **Item 6 is not.**
+
+> ### Outstanding: `shared/migrations/` does not exist
+>
+> No `V001__initial_schema.sql`, and no `shared/migrations/` directory. The schema is still prose in
+> [data-model.md](./data-model.md), and every document that depends on the canonical SQL —
+> both `environment-setup-guide.md` files, both `devops-pipeline.md` files, both
+> `testing-standards.md` files, and the Spring build's copy step — references a path that is not
+> there yet.
+>
+> **Nothing downstream can run until it exists.** It is the first thing Phase 6 needs, it is
+> required before either backend's CI can be green, and it is the only remaining item that turns
+> the specification into something executable. Writing it is a mechanical transcription of
+> [data-model.md](./data-model.md) — the DDL is already written out there, including the
+> `btree_gist` extension, the generated `stay_period` column, the exclusion constraint, the
+> composite foreign keys, and the partial and functional indexes — plus the seven `amenities` rows,
+> which belong in a migration because their codes are a contract.
+>
+> **Recommendation: do this before Phase 5**, not during Phase 6. It is small, it is the one
+> deliverable that unblocks everything else, and leaving it until implementation means discovering
+> transcription errors at the moment they are most expensive.
 
 ---
 
@@ -304,22 +382,34 @@ the guest in, and see the calendar update — against either backend, from eithe
 
 ---
 
-## Open items carried into Phase 3
+## Open items carried into Phase 5
 
-Not blockers, but they should be resolved or consciously deferred:
+1. **`shared/migrations/V001__initial_schema.sql` does not exist** — the one unmet Phase 4
+   criterion, detailed above. **This is the only blocker in the list**, and the recommendation is
+   to write it before Phase 5 rather than during Phase 6.
+2. **Spring Boot before Node in Phase 6** — recommended below, still not formally confirmed.
+   Follows from the migration asymmetry: the Flyway-owning backend has to make the schema real
+   before Prisma has anything to introspect.
+3. **No end-to-end browser testing.** The one acknowledged gap in the test strategy, named in
+   [devops-pipeline-overview.md](./devops-pipeline-overview.md#deliberately-absent) and in all four
+   stacks' `testing-standards.md`. Fine to carry; worth deciding deliberately rather than by
+   default.
+4. **The per-repo `README.md` files are one line each**, and are the most-read files in a portfolio
+   project. Phase 8 item 5 covers them; worth noting that they are currently the weakest artifact
+   in the four implementation repos.
+5. **A CI job that diffs the byte-identical document pairs** is specified in four stack documents
+   but not yet written. Four pairs now depend on it —
+   [context-map.md](../context-map.md) lists them. Six broken cross-document anchors were found by
+   hand during Phases 3 and 4, which is the argument for automating the link check alongside it.
 
-1. **`shared/decision-log.md` is still a stub**, and was not in Phase 2's scope. It is the
-   natural home for decisions that were *reversed* — Phase 1b's session redesign, the dropped
-   hosting stretch goal, the rejected per-type-count inventory model. Git history records these;
-   a log surfaces them. Worth a short pass before Phase 3, while the reasoning is fresh.
-2. **`context-map.md`** was populated during Phase 2 as an index of all thirteen `shared/`
-   documents plus the `stacks/` layout. It needs updating as Phase 3 and 4 fill in `stacks/`.
-3. **Spring Boot before Node in Phase 6** — recommended above, not yet confirmed.
-4. **Migration ownership** (Flyway executes, Prisma introspects) is the Phase 2 decision most
-   worth an explicit review, since it makes the two backends asymmetric in a way nothing else
-   in the project does.
-5. **No end-to-end browser testing** is the one acknowledged gap in the test strategy. Fine to
-   carry; worth deciding deliberately rather than by default.
+### Resolved since Phase 2
+
+- **`shared/decision-log.md`** was a stub; it now holds three reversals.
+- **`context-map.md`** is current: all four stacks marked written, the four byte-identical pairs
+  listed, and the migration asymmetry called out as the thing a symmetric-reading backend document
+  probably got wrong.
+- **Migration ownership** was reviewed and carried into all 20 Phase 4 documents, with its
+  consequences made explicit in both directions rather than mentioned once.
 
 ---
 

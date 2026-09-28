@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-4 done, React only (foundation; property detail/room types; search; auth/guards). Items 5-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-5 done, React only (foundation; property detail/room types; search; auth/guards; booking flow). Item 6 (guest account) remains, then Node, then Angular — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -776,6 +776,38 @@ the function under test, not the other way around.
 
 **The banned-token-handling grep from security-implementation.md was run, not just assumed
 clean**: `bearer|jwt|accessToken|refreshToken|auth/refresh` returns nothing in `src/`.
+
+### Step 5 (booking flow: summary, payment, confirmation) — done 2026-09-27, React only
+
+`hotelapp-client-react@9acb688`. Item 5, "the central feature" of the guest journey: S4/S6/S7
+built end to end and verified live against Spring Boot, not just automated checks — register →
+S4 (re-validation against live availability) → S6 success (`4242…`) → S7 → a fresh reload (real
+fetch, not cache) → back to S6, decline (`…0000`) → field-level error with the form retained →
+an unknown reservation id → 404. `RequireAuth` (built in Step 4, unwired until now) gets its
+first real consumer here.
+
+Four judgment calls, all verified in the actual code: `formatTimestamp` spells out every
+`Intl.DateTimeFormat` component explicitly, since `dateStyle`/`timeStyle` can't combine with
+`timeZoneName`; a new `lib/cancellationDeadline.ts` mirrors the backend's
+`check_in_date AT TIME ZONE tz - 48h` formula client-side (S4 needs a deadline before a
+reservation exists to have one), using `timeZoneName: "longOffset"` for a DST-aware UTC offset
+with no date library, per dependency-policy.md; `useBlocker` was correctly avoided in favor of
+`beforeunload` plus a disabling overlay, since it needs a data router and Step 2 deliberately
+moved this app onto declarative routing for the room-type modal; a `ReservationPricing` type was
+typed narrower than the availability response's `Pricing` after a live click-through caught
+`pricing.nights` rendering blank on S7 — the reservation object's embedded pricing has no
+`nights`/`rateCategory` fields, unlike `GET /availability`'s.
+
+**The recurring test-coverage gap escalated, not just re-flagged a third time.** This step shipped
+856 lines including the trickiest new pure logic yet (`cancellationDeadline.ts`, explicitly
+hand-verified against `acceptance-criteria.md`'s own worked examples) with exactly one test
+touched, none new. Second occurrence after Step 3 — this time closed two ways: `cancellationDeadline.test.ts`
+was added directly (pinned to AC-CX-04's two-timezone example and AC-CX-05's DST-transition case
+— the same values that were checked by hand and would otherwise have been thrown away), and
+`hotelapp-client-react`'s Copilot instructions now carry a standing rule that any new pure
+function with non-obvious logic ships with tests in the same commit, regardless of what that
+step's own prompt says — the same escalation already applied to the commit-and-push gap after it
+recurred once.
 
 ---
 

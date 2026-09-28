@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — Step 1 (foundation) done, React only. Items 2-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-2 done, React only (foundation; property detail/room types). Items 3-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -677,6 +677,40 @@ banner), so S1 still renders correctly, but the "logged out" vs. "can't reach th
 distinction is currently lost in a real browser. Needs a fix in the Spring Boot repo — a CORS
 configuration source wired to Spring Security directly, not only `WebMvcConfigurer` — before Step
 4's login/logout flows depend on that distinction being visible.
+
+### Step 2 (public browsing: property detail, room types) — done 2026-09-27, React only
+
+`hotelapp-client-react@353ec32`. Item 2: property detail (S2) — hero, address, description, the
+date/guest search-entry form — the Rooms section as room-type cards (amenity chips, an accessible
+badge, money via the shared formatter), and room-type detail, route-addressable either way at
+`/room-types/:roomTypeId` (a desktop modal, or a standalone page on a direct URL load). `npm run
+lint` / `typecheck` / `test:run` (7 files, 33 tests) / `build` (118 modules, ~102 KB gzip) all
+verified by running them.
+
+**A routing-shape change, not just a new screen.** The room-type modal needs React Router's
+background-location pattern — rendering the property-detail page behind the modal from
+`useLocation().state`, so a direct URL load with no such state falls through to the standalone
+page instead. Step 1's `createBrowserRouter`/`RouterProvider` (data router) matches purely on
+pathname and can't be overridden this way, so routing moved to declarative `<BrowserRouter>` +
+`<Routes>`. The `401` redirect wiring moved from `main.tsx` to `App.tsx` (`useNavigate` in a
+`useEffect`) as a direct consequence — a case where a screen's own UI requirement forced a
+structural change nobody had planned for at Step 1.
+
+**The one genuinely uncertain part from Step 1 is now resolved, by evidence rather than
+inference**: `GET /properties/{propertyId}`'s embedded `roomTypes` field, which
+[api-contracts.md](./api-contracts.md) names only as "summary form" with no example, was curled
+against the live backend and confirmed flat — no `description`, `amenities`, or `photos` — matching
+what the Spring Boot implementer had assumed when building it (see this document's Step 2 outcome
+under Phase 6) but never previously confirmed against a client. Typed narrowly in `api/types.ts` as
+`PropertyRoomTypeSummary` rather than inventing a richer shape; this screen doesn't read the field
+at all, since the Rooms section calls the separate `GET /properties/{propertyId}/room-types`
+endpoint instead. **Worth settling with a real example in `api-contracts.md`** before Angular or the
+Node backend has to guess the same thing independently.
+
+**A process gap found and closed**: two steps in a row (this one and Step 1) landed fully verified
+but uncommitted, discovered only by checking `git log` rather than trusting the completion summary.
+Both `hotelapp-client-react`'s and `hotelapp-server-springboot`'s Copilot instructions now carry a
+standing rule to commit at the end of every step regardless of whether the prompt says so.
 
 ---
 

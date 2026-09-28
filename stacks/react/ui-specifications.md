@@ -347,7 +347,9 @@ summary and the total, so the guest can see what they are agreeing to.
 
 **Client-side validation** — shape only, matching what the server checks: Luhn on the card number;
 expiry in the future; CVV 3–4 digits; cardholder name present. Card number formats in groups of
-four as typed and shows a brand indicator derived from the leading digits.
+four as typed, numbers only, capped at 16 digits entered — every test card in the table below is
+16 digits, and this demo does not need to accommodate other card lengths — and shows a brand
+indicator derived from the leading digits.
 
 **Test cards, documented on screen** (collapsible "Test card numbers" panel):
 

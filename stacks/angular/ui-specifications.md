@@ -55,6 +55,12 @@ into a JavaScript `number`. Calendar dates render as `Sat, Nov 14, 2026` in full
 `cancellation.deadline` — renders in the **property's** timezone with the zone abbreviation
 shown, e.g. `Nov 12, 2026, 12:00 AM EST`.
 
+**Rate category is always its label, never the raw value.** Everywhere a `rateCategory` appears —
+S3's results, S4's summary, S7's confirmation, S8c's detail — it renders the matching `label` from
+`GET /rate-categories` (`"AAA/CAA"`, `"Military/Veteran"`, …), the same rule S3's own entry already
+states for its own filter control. `MILITARY_VETERAN` on a guest-facing screen is a defect, not a
+cosmetic gap, the same as any other enum value leaking into UI copy unlabeled.
+
 **Terminology is binding.** All UI copy uses the vocabulary fixed in
 [glossary-of-conventions.md](../../shared/glossary-of-conventions.md#terminology-in-prose-and-ui-copy):
 "Front Desk" and "Manager" as role labels; **reservation** as the noun and entity, **booking** as

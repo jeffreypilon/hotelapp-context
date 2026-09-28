@@ -17,4 +17,4 @@ human/Claude reference, not something an agent session needs to read to do its o
 | `step-3-search-and-results.md` | Phase 7 Step 3 — search and results | `hotelapp-client-react@83cb778` |
 | `step-4-auth-route-guards.md` | Phase 7 Step 4 — auth, route guards | `hotelapp-client-react@69f6924` |
 | `step-5-booking-flow.md` | Phase 7 Step 5 — booking flow (summary, payment, confirmation) | `hotelapp-client-react@9acb688`, `f746c07` |
-| `step-6-reservation-history-modify-cancel.md` | Phase 7 Step 6 — reservation history, modify, cancel (S8b/S8c) | in progress |
+| `step-6-reservation-history-modify-cancel.md` | Phase 7 Step 6 — reservation history, modify, cancel (S8b/S8c) | `hotelapp-client-react@18a0f52` |

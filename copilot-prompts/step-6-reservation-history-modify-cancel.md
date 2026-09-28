@@ -1,9 +1,9 @@
 # Phase 7 Step 6 — reservation history, modify, cancel (S8b/S8c)
 
-In progress as of 2026-09-27 — not yet run through Copilot. Scoped to S8b/S8c only, mirroring the
-backend's own split of this item into two steps (Step 5: reservation management; Step 6:
-profile/password) rather than bundling all four S8 sub-screens into one prompt. S8a (profile) and
-S8d (password) are a separate, lighter step to follow.
+Produced `hotelapp-client-react@18a0f52`. Scoped to S8b/S8c only, mirroring the backend's own
+split of this item into two steps (Step 5: reservation management; Step 6: profile/password)
+rather than bundling all four S8 sub-screens into one prompt. S8a (profile) and S8d (password)
+are a separate, lighter step to follow.
 
 ```
 HotelApp — React Phase 7, Step 6: guest reservation history, modify, cancel (S8b/S8c)

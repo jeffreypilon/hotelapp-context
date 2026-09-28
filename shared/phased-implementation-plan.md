@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **Interleaved with Phase 6, not sequential from here** — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — Step 1 (foundation) done, React only. Items 2-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -634,6 +634,49 @@ Suggested order, mirroring the backend's so each layer has something to talk to:
 **Done means:** both clients implement every specified screen; either can be pointed at either
 backend by changing one configuration value and behaves identically; the accessibility and
 responsive targets are met; builds are within the bundle budget.
+
+### Step 1 (foundation) — done 2026-09-27, React only
+
+`hotelapp-client-react@fbcd8df`. Item 1 (skeleton, routing, Tailwind, API client) plus session
+bootstrap pulled forward from item 4 — see the judgment call below. `npm run lint` / `typecheck`
+/ `test:run` (4 files, 24 tests) / `build` (104 modules, ~118 KB gzip) all pass, verified by
+running them, not by trusting the report.
+
+Built: full ESLint 9 + Prettier + Vitest + React Testing Library + MSW toolchain (none of it
+existed after Step 0); `QueryClient` defaults per
+[state-management.md](../stacks/react/state-management.md#defaults) (30s `staleTime`, no retry on
+a 4xx); the `qk` query-key factory; a complete fetch wrapper (all HTTP methods,
+`Idempotency-Key` passthrough, the global `401`/`ACCOUNT_INACTIVE` rule with bootstrap
+suppression for `GET /auth/me`); `AuthProvider`/`useSession`; the full error-code message table;
+`lib/format.ts`; a real S0 shell (Header, Footer, ToastProvider, ErrorBoundary); S1 brought up to
+its full spec (search, city filter, sort, pagination, both empty states, all URL-driven via
+`useSearchParams`).
+
+**Judgment call, flagged rather than silently decided:** this step's own suggested order lists
+session bootstrap under item 4 (Auth), but it was built here in item 1 instead, because
+[ui-specifications.md](../stacks/react/ui-specifications.md#s0--app-shell) calls bootstrap "the
+app's first action" and [architecture-specification.md](../stacks/react/architecture-specification.md#provider-composition)
+wires `AuthProvider` unconditionally from `main.tsx` before any auth screen exists. The `401`
+redirect target (`/login`) 404s harmlessly (S15) until Step 4 (still Auth, per the item list)
+fills it in.
+
+Two real bugs found during manual browser verification, not present in the original scope,
+caught by testing rather than assumed correct: the filter-debounce effect unconditionally
+deleted the `page` URL param on mount, breaking a deep link to a specific page — fixed by
+diffing against the current URL params instead of the stale closure values. And `page=0` was
+being silently clamped to `1` (`|| 1`) instead of reaching the server to be validated, violating
+[api-contracts.md](./api-contracts.md#pagination-sorting-filtering)'s "never silently clamped"
+rule — fixed with an explicit `Number.isFinite` check.
+
+**Found, not fixed here** (a different repo, out of scope for this one): Spring Security's
+`401`/`403` responses in `hotelapp-server-springboot` are missing CORS headers, because they're
+emitted before `WebConfig`'s MVC-scoped CORS mapping runs — confirmed with `curl`, `GET
+/properties` (200, MVC-handled) carries `Access-Control-Allow-*`, `GET /auth/me` (401,
+security-handled) does not. This client tolerates it by design (falls back to its network-failure
+banner), so S1 still renders correctly, but the "logged out" vs. "can't reach the server"
+distinction is currently lost in a real browser. Needs a fix in the Spring Boot repo — a CORS
+configuration source wired to Spring Security directly, not only `WebMvcConfigurer` — before Step
+4's login/logout flows depend on that distinction being visible.
 
 ---
 

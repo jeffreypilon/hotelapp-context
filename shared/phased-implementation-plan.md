@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-5 done, React only (foundation; property detail/room types; search; auth/guards; booking flow). Item 6 (guest account) remains, then Node, then Angular — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-6 done, React only (foundation; property detail/room types; search; auth/guards; booking flow; reservation history/modify/cancel). Item 6's other half — S8a/S8d profile and password — remains as one more step before React's guest-facing slice is complete; then Node, then Angular — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -808,6 +808,39 @@ was added directly (pinned to AC-CX-04's two-timezone example and AC-CX-05's DST
 function with non-obvious logic ships with tests in the same commit, regardless of what that
 step's own prompt says — the same escalation already applied to the commit-and-push gap after it
 recurred once.
+
+### Step 6 (guest reservation history, modify, cancel: S8b/S8c) — done 2026-09-27, React only
+
+`hotelapp-client-react@18a0f52`. Split from item 6's own scope the same way the backend split it
+(reservation management vs. profile/password): S8b (the four-tab reservation list) and S8c
+(detail, with status-gated modify/cancel) only — S8a/S8d are a separate, lighter step still ahead.
+Verified end to end against live Spring Boot using Step 5's reservation: Upcoming shows it,
+Past/Cancelled show distinct empty copy, a date change to a different rate category produces the
+correct new-total comparison, and cancelling shows the refund wording before confirming and the
+outcome note after.
+
+**The standing test-coverage rule (added after Step 5) worked immediately, not just eventually.**
+Both new pure-logic files this step introduced — `lib/reservationTabs.ts` (the tab-to-query-param
+mapping) and `lib/reservationChangeSummary.ts` (the new-vs-old-total comparison) — got their own
+test files in the same commit, unprompted by a reminder. Test count: 44 → 50.
+
+Three judgment calls, all verified in the actual code: the `all` tab's empty copy
+("You have no reservations.") isn't literally specified in ui-specifications.md (only Upcoming/
+Past/Cancelled are); a cancelled reservation's outcome note uses the cancel mutation's own
+response (exact `cancelledAt` and refund amount) when cancelled in the current session, falling
+back to `cancellation.isRefundableNow` on a plain page load of an already-cancelled reservation,
+since `GET /reservations/{id}`'s documented shape carries no `cancelledAt`/refund detail for that
+case — worth adding to the contract if a precise post-hoc outcome matters later; both dialogs are
+conditionally mounted rather than controlled by an `open` prop (`{open && <Dialog .../>}`), since
+`react-hooks/set-state-in-effect` correctly rejected a reset-on-open effect and a fresh mount per
+open is the idiomatic fix — this also gets native `<dialog>`'s automatic return-focus-on-close for
+free, satisfying the focus-trapping requirement without extra code.
+
+**Worth watching, not yet a problem**: the production bundle crossed Rollup's generic 500 KB
+pre-gzip chunk-size warning threshold for the first time (510 KB raw, 152.58 KB gzip) — still
+comfortably inside non-functional-requirements.md's 300 KB **gzipped** budget, which is the actual
+spec'd number, so no action needed yet. Worth a glance again once Node/Angular or the admin phase
+add more screens to this same bundle.
 
 ---
 

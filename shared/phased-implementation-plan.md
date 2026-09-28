@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-3 done, React only (foundation; property detail/room types; search). Items 4-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-4 done, React only (foundation; property detail/room types; search; auth/guards). Items 5-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -743,6 +743,39 @@ server was squatting on port 5173 during verification, silently bumping new dev 
 which makes every backend call fail as an opaque CORS error, since the backend only allow-lists
 5173. Distinct from the separately-documented `/auth/me` CORS defect; check for a stray process on
 5173 before suspecting either CORS issue again.
+
+### Step 4 (auth: login, registration, route guards) — done 2026-09-27, React only
+
+`hotelapp-client-react@69f6924`. Item 4: `login()`/`register()`, `LoginScreen`/`RegisterScreen`
+(shared `AuthLayout`, React Hook Form + Zod, a `PasswordField` with show/hide), and
+`RequireAuth`/`RequireStaff`/`RequireManager` route guards with a rank map. `react-hook-form` and
+`zod` installed — the first screen that actually needed them. Opened with a preamble closing part
+of Step 3's test-coverage gap: `validateDateRange` unit tests (33 → 40 tests), not the fuller
+`SearchScreen` component-test debt, which is still carried forward.
+
+Five judgment calls, all verified present in the actual code: `Retry-After` parsing assumes
+delta-seconds, never an HTTP-date (`api-contracts.md` doesn't specify the format either way — the
+code comment states this more confidently than the disclosed judgment call itself does, worth
+softening); the mutation `onError` handlers reuse `resolveError` generically rather than branching
+per-code, matching `error-handling.md` §5's canonical pattern, with `EMAIL_ALREADY_REGISTERED`'s
+login link layered on via a separate flag since the shared resolver only returns text and field;
+an authenticated-but-under-ranked visitor is redirected (`RequireStaff` → `/`, `RequireManager` →
+`/admin`) rather than shown a page-level permission screen, since none exists in this phase and
+`INSUFFICIENT_ROLE` is meant to be unreachable when guards work; `RequireStaff`/`RequireManager`
+are built but not wired into `routes.tsx` (per this step's own scope — `/admin` doesn't exist
+until Phase 6 items 9-12), proven instead against a test-only protected route; the three new
+dependencies followed this `package.json`'s existing `^`-range convention rather than
+`dependency-policy.md`'s literal "pinned exactly" wording, since no existing dependency in the
+file is actually pinned that way.
+
+**One real bug caught and fixed during the preamble, not by inspection but by a failing test**:
+a first-draft `PAST_DATE` test used UTC calendar-day arithmetic, but `validation.ts`'s own
+`todayUtcDate()` defines "today" as the *local* calendar day expressed as a UTC-anchored `Date` —
+the two can disagree by a day depending on the machine's timezone. Fixed the test helper to match
+the function under test, not the other way around.
+
+**The banned-token-handling grep from security-implementation.md was run, not just assumed
+clean**: `bearer|jwt|accessToken|refreshToken|auth/refresh` returns nothing in `src/`.
 
 ---
 

@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-6 done, React only (foundation; property detail/room types; search; auth/guards; booking flow; reservation history/modify/cancel). Item 6's other half — S8a/S8d profile and password — remains as one more step before React's guest-facing slice is complete; then Node, then Angular — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -841,6 +841,32 @@ pre-gzip chunk-size warning threshold for the first time (510 KB raw, 152.58 KB 
 comfortably inside non-functional-requirements.md's 300 KB **gzipped** budget, which is the actual
 spec'd number, so no action needed yet. Worth a glance again once Node/Angular or the admin phase
 add more screens to this same bundle.
+
+### Step 7 (guest profile, password: S8a/S8d) — done 2026-09-27, React only
+
+`hotelapp-client-react@06d375b`. The other half of item 6, closing it out — and with it, **all of
+Phase 7's guest-facing scope (items 1-6) is now built and manually verified against the live
+Spring Boot backend**: public browsing, search, auth, booking, reservation management, and
+profile/password. Nothing in that scope was simplified or skipped; the only deliberately deferred
+work is admin (items 7-8, S9-S14), same as Spring Boot's own guest-facing/admin split, plus the
+still-open Spring Boot Security-CORS defect (documented, not fixed here, out of this repo).
+
+The standing test-coverage rule held for a third step running: `lib/buildProfilePatch.ts` (the
+dirty-fields-to-PATCH-body builder — the frontend's mirror of the backend's own hardest problem on
+this endpoint, omitted-vs-null-vs-empty-string) shipped with its own test in the same commit,
+unprompted. 50 → 56 tests.
+
+Three judgment calls, all verified in the actual code: `PUT /me/password`'s `INVALID_CREDENTIALS`
+is field-level here (`ui-specifications.md`'s explicit S8d text), a deliberate departure from the
+shared error map's form-level wording for the same code on the login screen — confirmed in the
+browser that the client's global dead-session redirect (which keys on error *code*, not HTTP
+status) correctly does not fire for it, since this code isn't in that rule's list; `Profile.address`
+is typed non-nullable per the contract's own `GET /me` example even though `data-model.md` allows
+null address columns for a guest, rendered defensively (`?? ""`) regardless; `Header`'s `UserArea`
+became a real dropdown menu (`role="menu"`/`"menuitem"`, click-outside + Escape) rather than
+extending the previous flat inline layout, since ui-specifications.md's S0 table literally says
+"menu" for the Guest state — a larger diff than a single link addition, but scoped to Guest-only
+items as the prompt asked.
 
 ---
 

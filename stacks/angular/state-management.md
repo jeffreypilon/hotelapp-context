@@ -223,8 +223,15 @@ owned by [error-handling.md](./error-handling.md) rather than written per form.
 Server field errors from a `400`'s `errors[]` array are applied with `setErrors` on the matching
 control — which is why contract field names and control names must match exactly.
 
-The payment form validates on blur, not on change: validating a card number on every keystroke marks
-it invalid while it is being typed.
+**Every form validates on blur, then re-validates live once a field has an error showing** — per
+[ui-specifications.md](./ui-specifications.md#1-conventions-for-every-screen)'s input-validation
+conventions. Validating a card number on every keystroke marks it invalid for most of the time
+it's being typed; validating only on blur, then never again until the next blur, makes a guest
+re-click out of a field just to see whether their correction worked. This was previously stated as
+payment-specific; it applies to every form in this repo. The one exception is a field verifying an
+existing credential (login's password, password-change's "current password") — see
+ui-specifications.md's exemption for why those get no format validation to trigger in the first
+place.
 
 ---
 

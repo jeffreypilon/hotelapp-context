@@ -188,8 +188,16 @@ mirror the server's so the guest sees the same message either way, with the text
 Server field errors from a `400`'s `errors[]` array are applied with `setError` keyed on the
 `field` value — which is why contract field names and form field names must match exactly.
 
-The payment form is `mode: 'onBlur'`, not `onChange`: validating a card number on every keystroke
-marks it invalid while it is being typed.
+**Every form uses `mode: 'onBlur'` with `reValidateMode: 'onChange'`**, not the RHF default
+(`onSubmit`) — per [ui-specifications.md](./ui-specifications.md#1-conventions-for-every-screen)'s
+input-validation conventions. Validate the first time when a field is blurred, not on every
+keystroke while it's still being typed (typing a card number one digit at a time would otherwise
+show it as invalid for most of the process); re-validate live once an error is already showing, so
+correcting it doesn't require blurring again. This was previously stated as payment-specific; it
+applies to every RHF-managed form in this repo. The one exception is a field verifying an existing
+credential (login's password, password-change's "current password") — see
+ui-specifications.md's exemption for why those get no format validation to trigger in the first
+place.
 
 ---
 

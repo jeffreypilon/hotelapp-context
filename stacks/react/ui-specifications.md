@@ -67,6 +67,37 @@ visible focus rings; 4.5:1 text contrast; full keyboard operability. Results cou
 async outcomes announce via `aria-live="polite"`; validation errors via `aria-live="assertive"` and
 `aria-describedby` on the offending field. Target is WCAG 2.1 AA.
 
+**Client-side input validation, every field that accepts free text or a number.** This is UX, not
+security — the server validates independently and is the real gate — but a field that silently
+accepts garbage (`2030323t` in a 4-digit expiry year) or an unbounded length is a defect, not a
+missing nice-to-have.
+
+- **A numeric-only field is masked, not merely hinted.** `inputMode="numeric"` alone only changes
+  which mobile keyboard appears — it does not stop a pasted or physically-typed letter, and does
+  not exist at all for someone on a desktop keyboard. Every numeric-only field (phone, card
+  number, card expiry month/year, CVV, and any future one) strips non-digit characters live, as
+  typed, and hard-caps at its real maximum length — 10 digits for a US phone number, 16 for a card
+  number, 2 for an expiry month, 4 for an expiry year, 3–4 for a CVV.
+- **Every text field's maximum length matches its backing database column**, per
+  [data-model.md](../../shared/data-model.md), where one exists — not an arbitrary round number.
+  Guessing a smaller cap than the column rejects a legitimately long value the server would have
+  accepted; guessing a larger one lets a guest type input that only fails after a round trip.
+- **A field whose valid range isn't fixed by the database or the contract** (a guest count, a
+  price filter) still gets a stated, sensible ceiling chosen by whoever builds the screen — not
+  left unbounded because no authority defines one. State the number chosen in a code comment so a
+  reviewer isn't left guessing why that value and not another.
+- **A field verifying an existing credential — a login password, or "current password" on a
+  change-password screen — gets no format or length validation beyond "required."** The client
+  cannot know what rule was in effect when that value was set, and a client-side rule that's
+  stricter than the one the account was actually created under would reject a genuinely correct
+  value. Only a field *setting* a new value enforces shape.
+- **Every field validates when the guest leaves it (on blur), not only when the whole form is
+  submitted.** Once a field has shown an error, it re-validates live as the guest corrects it,
+  rather than waiting for another blur — the standard pairing of "validate on blur, re-validate on
+  change." Waiting for submission to surface a problem in the third field of a five-field form is
+  a worse experience than saying so as the guest moves past it. Stack-specific mechanics are in
+  each stack's own `state-management.md`.
+
 **Pagination.** Every list uses the envelope from
 [api-contracts.md](../../shared/api-contracts.md#pagination-sorting-filtering): 1-based `page`,
 `pageSize` default 20. Controls show current page, total pages, and total items. Page and all

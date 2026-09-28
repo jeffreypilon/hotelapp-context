@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-2 done, React only (foundation; property detail/room types). Items 3-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
+| 7 | Frontend implementation | ⬜ **In progress** — Steps 1-3 done, React only (foundation; property detail/room types; search). Items 4-6 (guest-facing) remain, then Node, then Angular — see the design decision below |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -711,6 +711,38 @@ Node backend has to guess the same thing independently.
 but uncommitted, discovered only by checking `git log` rather than trusting the completion summary.
 Both `hotelapp-client-react`'s and `hotelapp-server-springboot`'s Copilot instructions now carry a
 standing rule to commit at the end of every step regardless of whether the prompt says so.
+
+### Step 3 (search and results) — done 2026-09-27, React only
+
+`hotelapp-client-react@83cb778`. Item 3: `GET /availability`/`/amenities`/`/rate-categories`
+wired through TanStack Query (`availability` at `staleTime: 0` per state-management.md — the one
+query that must never serve a cached answer; the reference lists at `Infinity`). `SearchScreen`
+renders the search form, sidebar filters, sort, result cards with discount pricing and scarcity
+text, and client-side date pre-validation reusing `error-handling.md`'s exact field-code wording.
+The standing commit rule worked as intended this time — committed and pushed without having to be
+caught and asked for again.
+
+Four judgment calls, all verified present in the actual code, not just claimed: the rate-category
+label on a result card comes from `GET /rate-categories`'s data, never the raw enum value; all
+four sort options use the same `field:asc`/`field:desc` convention `GET /properties` already
+established, inferred rather than given an explicit grammar in the contract; the room-type filter
+list is sourced from the static 5-value `room_type_code` enum (factored into
+`lib/roomTypeCategories.ts`, shared with S2's room-type card) rather than a per-property endpoint,
+since none exists scoped that way; a server-side `VALIDATION_FAILED` this screen's own
+pre-validation didn't already catch renders as one generic form-level alert rather than a
+field-mapped one — a fallback path expected to be unreachable in practice, not a full experience.
+
+**A real gap, not disclosed in the original summary and found by checking, not trusting**: this
+step shipped zero new test files — `SearchScreen.tsx` (412 lines), `ResultCard.tsx`, and
+`validation.ts` all untested, despite every prior step adding tests for its new logic and this
+being ui-specifications.md's own "most complex guest screen." Carried forward rather than closed
+immediately here, for cost reasons — see the Step 4 entry below for how it's being closed.
+
+**Not a code defect, but worth recording so it isn't mistaken for one**: a stray leftover Vite dev
+server was squatting on port 5173 during verification, silently bumping new dev servers to 5174 —
+which makes every backend call fail as an opaque CORS error, since the backend only allow-lists
+5173. Distinct from the separately-documented `/auth/me` CORS defect; check for a stray process on
+5173 before suspecting either CORS issue again.
 
 ---
 

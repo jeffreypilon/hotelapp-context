@@ -1,0 +1,4 @@
+# Human/Claude reference material an agent session doesn't need to read to do its own work.
+# gitignore syntax; no negation support; VS Code Copilot reads this at extension startup only
+# (restart the window after editing).
+copilot-prompts/

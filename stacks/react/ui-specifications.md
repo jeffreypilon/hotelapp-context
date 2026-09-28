@@ -168,6 +168,12 @@ above a responsive card grid: 1 column at 360 px, 2 at 768 px, 3 at 1280 px. Eac
 photo, name, category label, bed configuration, "Sleeps 2", amenity icon row, "From $249.00 /
 night", and a "Check availability" button that routes to S3 pre-filtered to that room type.
 
+For a Conference Room, "Sleeps N" reads "Capacity N" and "From $X / night" reads "From $X / day" —
+"sleeps" and "night" describe an overnight stay, which a full-day meeting space is not, per
+[domain-glossary.md](../../shared/domain-glossary.md#room-type)'s note that it follows the same
+full-day booking rules as a guest room without being one. Every other element of the card is
+unchanged for this category.
+
 An accessible room type carries a visible "Accessible" badge with an accessible-name attribute —
 not an icon alone.
 
@@ -218,6 +224,11 @@ $249.00 struck through ← base rate, ONLY when a discount applied
 3 nights · $672.30 total
 AAA/CAA rate applied   ← category label, only when not NONE
 ```
+
+For a Conference Room, "Sleeps N" reads "Capacity N" and the rate line's "/ night" reads "/ day",
+same as S2. The "N nights · $total total" line is unchanged — `nights` stays the shared duration
+unit across every room type in the pricing model; only the per-unit rate label and the occupancy
+label are guest-room-specific wording, not the underlying count.
 
 Scarcity: when `availableRoomCount` is 1, show "Only 1 room left". At 2–3, "Only N rooms left".
 Above 3, nothing. Per [api-contracts.md](../../shared/api-contracts.md#get-availability--public)

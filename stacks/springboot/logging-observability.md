@@ -73,22 +73,25 @@ strictly simpler — the MDC is built in and the encoder picks it up without a c
 
 ## Redaction — the hard rule
 
-> **Never logged, at any level, in any environment:**
+> **Never logged, at any level, in any environment, in any form -- including inside a request or
+> response body line:**
 >
 > - `Cookie` and `Set-Cookie` headers, and any raw session token
 > - `payment.cardNumber`, `payment.cvv`, `payment.expiryMonth`, `payment.expiryYear`
 > - `password`, `currentPassword`, `newPassword`, `passwordHash`
 > - The datasource URL and password
-> - **Full request or response bodies**, as a blanket rule
 
 Per
-[security-principles.md](../../shared/security-principles.md#logging-and-data-handling). Three
+[security-principles.md](../../shared/security-principles.md#logging-and-data-handling), including
+that document's "redacted body logging, not a blanket ban" design decision. Four
 Spring-specific enforcement points, because the realistic violation is a debugging convenience rather
 than malice:
 
-**1. Never enable `CommonsRequestLoggingFilter` with `setIncludePayload(true)`.** It logs every body
-on every route, including `POST /reservations`. This is the specific mechanism by which card data
-would reach a log file in this stack, and it is a one-line change someone makes while debugging.
+**1. Never enable `CommonsRequestLoggingFilter` with `setIncludePayload(true)`.** It logs the raw
+body verbatim on every route, including `POST /reservations`, with no redaction hook at all. This
+is the specific mechanism by which card data would reach a log file in this stack, and it is a
+one-line change someone makes while debugging. `BodyLoggingFilter` (below) exists so that "I want to
+see the body" has a safe answer that isn't this.
 
 **2. Override `toString()` on the payment record.** A Java `record`'s generated `toString()` includes
 every component, so `log.debug("request: {}", request)` prints the card number. Redact in
@@ -106,6 +109,24 @@ public record PaymentRequest(String cardNumber, int expiryMonth, int expiryYear,
 
 **3. Never log an entity.** `User.toString()` would include `passwordHash` unless deliberately
 overridden, and entities do not leave the service layer anyway.
+
+**4. Request/response body logging, when wanted, goes through `BodyLoggingFilter`, at `DEBUG`
+only, never through a filter with no redaction hook.** It wraps the request and response in
+Spring's `ContentCachingRequestWrapper`/`ContentCachingResponseWrapper`, parses each body as JSON,
+walks the tree replacing every field named above with `"[REDACTED]"` (recursively, so a nested
+`payment.cardNumber` is caught the same as a top-level one), and only then logs the result:
+
+```
+DEBUG traceId=... method=POST path=/api/v1/reservations
+  requestBody={"roomTypeId":"...","payment":{"cardNumber":"[REDACTED]","cvv":"[REDACTED]",...}}
+  responseBody={"id":"...","confirmationNumber":"HTL-...","status":"CONFIRMED"}
+```
+
+Guarded by `log.isDebugEnabled()` before any wrapping happens, so it costs nothing at the `INFO`
+default — this is what makes `LOG_LEVEL=DEBUG` safe to turn on for a live demo rather than a
+standing risk. A non-JSON or empty body is reported as such (`<empty>`, `<non-JSON body, N bytes>`)
+rather than ever falling back to the raw bytes, since that would defeat the redaction step
+entirely.
 
 **`logging.level.org.hibernate.SQL` stays off outside local debugging**, and
 `org.hibernate.orm.jdbc.bind` — which logs bound parameter values — stays off **always**. That
@@ -237,4 +258,4 @@ with no response — the transaction itself is safe, since the database rolls ba
 | Log rotation, file appenders | stdout only; rotation is the container runtime's job |
 | Alerting | Nothing is running to alert on |
 | `org.hibernate.orm.jdbc.bind` logging | Would log bound parameters, including passwords |
-| Request/response body logging | Forbidden — see redaction |
+| Request/response body logging with no redaction step | Forbidden — see redaction |

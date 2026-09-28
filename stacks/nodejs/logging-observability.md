@@ -73,16 +73,16 @@ the reason a service can log without knowing about requests.
 
 ## Redaction — the hard rule
 
-> **Never logged, at any level, in any environment:**
+> **Never logged, at any level, in any environment, in any form -- including inside a request or
+> response body line:**
 >
 > - `Cookie` and `Set-Cookie` headers, and any raw session token
 > - `payment.cardNumber`, `payment.cvv`, `payment.expiryMonth`, `payment.expiryYear`
 > - `password`, `currentPassword`, `newPassword`, `password_hash`
 > - `DATABASE_URL` — it contains the password
-> - **Full request or response bodies**, as a blanket rule
 
-Per
-[security-principles.md](../../shared/security-principles.md#logging-and-data-handling). Configured
+Per [security-principles.md](../../shared/security-principles.md#logging-and-data-handling),
+including that document's "redacted body logging, not a blanket ban" design decision. Configured
 at the logger, not per call site, because the realistic violation is not malice but a well-meaning
 "log the whole request" during debugging:
 
@@ -99,8 +99,16 @@ pino({ redact: {
 whole object by accident. **That is the point** — a deny-list applied at the boundary is the only
 version of this rule that survives contact with a debugging session.
 
-**Request-body logging is off on every route**, and `POST /reservations` specifically must never have
-it re-enabled. Method, path, status, and duration only.
+**Request/response body logging is off by default on every route** (`LOG_LEVEL=info`), matching the
+Spring Boot stack's `BodyLoggingFilter`. It exists as a `debug`-level-only companion middleware —
+call it `bodyLoggingMiddleware` for parity with the Java name — built the same way: parse each body
+as JSON, pass it through the same `redact` paths above (`pino.redaction`'s `path`/`fastRedact`
+plumbing works over a plain object just as well outside a log call), and only then log the result.
+Never wire body content through `CommonsRequestLoggingFilter`'s Express-equivalent (`morgan` with a
+custom body token, or any middleware that interpolates `req.body`/`res.body` into a line before
+redaction runs) — that is this stack's version of the same one-line mistake Spring's
+`setIncludePayload(true)` is. `POST /reservations` specifically must never have unredacted body
+logging enabled by any mechanism.
 
 **`err` serialization must be explicit.** Pino serializes an `Error` to `{type, message, stack}`;
 an `AppError` carrying a `detail` derived from user input is fine, but an error object that has
@@ -231,4 +239,4 @@ rather than visible failures.
 | Audit logging as a system | Partially covered by columns (`cancelled_by_user_id`, `checked_in_at`, session `ip_address`); named as a real gap in [security-principles.md](../../shared/security-principles.md#out-of-scope-and-why-that-line-is-acceptable) |
 | Log rotation, file output | stdout only; rotation is the container runtime's job |
 | Alerting | Nothing is running to alert on |
-| Request/response body logging | Forbidden — see redaction |
+| Request/response body logging with no redaction step | Forbidden — see redaction |

@@ -348,9 +348,21 @@ because it takes only one well-meaning "log the full request" during debugging.
 
 **Card data is never in a database, a log, or a response.** The dummy payment form validates
 card-shaped input and the backend immediately discards everything but card brand and last
-four. Request-body logging must be disabled or field-masked on `POST /reservations`
-specifically. The column list in [data-model.md](./data-model.md#payments) is itself the
+four. Request/response body logging, where a backend chooses to have it at all, must go
+through a field-level redaction step applied to every request and every response, not a
+per-route judgment call — `POST /reservations` is simply the route where getting this wrong
+would matter most. The column list in [data-model.md](./data-model.md#payments) is itself the
 proof that a breach here could not yield a card.
+
+> **Design Decision — redacted body logging, not a blanket ban.** The original version of
+> this rule banned request/response body logging outright. It was relaxed after a real
+> request (interview-demo visibility: seeing live request/response data in a terminal while
+> using the app) ran into it. The rule now permits body logging **only** through the same
+> deny-list already enforced elsewhere (`cardNumber`, `cvv`, `expiryMonth`, `expiryYear`,
+> `password`, `currentPassword`, `newPassword`, `passwordHash`), masked before the line is ever
+> built — never a raw dump gated only by log level. `CommonsRequestLoggingFilter` with
+> `setIncludePayload(true)`, or any equivalent that logs a body verbatim, remains banned
+> outright, because it has no redaction hook at all.
 
 **Error responses disclose nothing internal.** RFC 9457 `detail` is safe to show a user; no
 stack trace, SQL fragment, hostname, file path, or driver message reaches a client. `500

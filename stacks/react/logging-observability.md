@@ -73,6 +73,17 @@ redaction rule below needs one place to live.
 The first two are the valuable ones. Both are cases where the code recovers gracefully and the user sees
 something reasonable, which means **nothing else would ever reveal them**.
 
+**Two `debug`-level lines exist purely for demo visibility** — so a terminal-savvy audience can see
+activity in the browser console while using the app, mirroring the backend's own per-request line:
+
+| Line | Where | Content |
+|------|-------|---------|
+| `"api request"` (or `"api request failed (network error)"`) | `api/client.ts`'s `request()` | `method`, `path`, `status`, `durationMs` — never the body, per the rule below |
+| `"navigated"` | The root layout, on every route change | `pathname`, `search` |
+
+Both are suppressed in a production build like any other `debug`/`info` line — table above — so they cost
+nothing outside local development.
+
 ---
 
 ## Redaction — the one hard rule
@@ -83,7 +94,12 @@ something reasonable, which means **nothing else would ever reveal them**.
 > - `password`, `currentPassword`, `newPassword`
 > - Any request body from `POST /reservations` or the auth endpoints
 > - Cookie values — unreachable anyway, since the session cookie is `HttpOnly`
-> - Full request or response bodies, as a blanket rule
+
+**This client's own choice is to log no request or response body at all**, not merely a redacted
+one — simpler than the backend's redacted-body option in
+[security-principles.md](../../shared/security-principles.md#logging-and-data-handling), because
+there's no terminal-visibility need for it here: `api/client.ts`'s debug line already covers
+method/path/status, and DevTools' own Network tab shows the actual body when a developer needs it.
 
 Per [security-principles.md](../../shared/security-principles.md#logging-and-data-handling), the realistic
 way this gets violated is not malice but a well-meaning "log the whole request" during debugging. So the

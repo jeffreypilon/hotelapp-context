@@ -75,6 +75,18 @@ something reasonable, which means **nothing else would ever reveal them**. The l
 worth having precisely because a dead `rxMethod` stream produces no error at all — the store simply stops
 responding.
 
+**Two `debug`-level lines exist purely for demo visibility** — so a terminal-savvy audience can see
+activity in the browser console while using the app, mirroring the backend's own per-request line and
+the React client's identical pair:
+
+| Line | Where | Content |
+|------|-------|---------|
+| `"api request"` (or `"api request failed (network error)"`) | The HTTP interceptor | `method`, `path`, `status`, `durationMs` — never the body, per the rule below |
+| `"navigated"` | A root-level subscriber to the `Router`'s `NavigationEnd` events | `pathname`, `search` (or Angular's `urlAfterRedirects` split into the two) |
+
+Both are suppressed in a production build like any other `debug`/`info` line — table above — so they cost
+nothing outside local development.
+
 ---
 
 ## Redaction — the one hard rule
@@ -85,7 +97,6 @@ responding.
 > - `password`, `currentPassword`, `newPassword`
 > - Any request body from `POST /reservations` or the auth endpoints
 > - Cookie values — unreachable anyway, since the session cookie is `HttpOnly`
-> - Full request or response bodies, as a blanket rule
 
 Per [security-principles.md](../../shared/security-principles.md#logging-and-data-handling), the realistic
 way this gets violated is not malice but a well-meaning "log the whole request" during debugging. So the
@@ -99,6 +110,11 @@ const REDACT = new Set(['cardNumber', 'cvv', 'expiryMonth', 'expiryYear',
 
 Redaction is recursive over nested objects, since the payment block arrives nested under `payment`.
 
+**This client's own choice is to log no request or response body at all**, not merely a redacted one
+— simpler than the backend's redacted-body option in
+[security-principles.md](../../shared/security-principles.md#logging-and-data-handling), because
+there's no terminal-visibility need for it here: the interceptor's debug line already covers
+method/path/status, and DevTools' own Network tab shows the actual body when a developer needs it.
 **The HTTP interceptor never logs a request or response body.** It may log method, path, and status. That
 restriction is what makes the card-data rule in
 [security-implementation.md](./security-implementation.md#payment-data) enforceable rather than aspirational,

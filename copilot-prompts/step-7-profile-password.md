@@ -1,7 +1,7 @@
 # Phase 7 Step 7 — guest profile and password (S8a/S8d, the rest of item 6)
 
-Drafted 2026-09-27 — not yet run through Copilot. Closes out item 6 (and, with it, React's
-entire guest-facing slice, Phase 7 items 1-6) by covering the two S8 sub-screens Step 6 left out
+Produced `hotelapp-client-react@06d375b`. Closes out item 6 (and, with it, React's entire
+guest-facing slice, Phase 7 items 1-6) by covering the two S8 sub-screens Step 6 left out
 (S8b/S8c were Step 6's scope).
 
 ```

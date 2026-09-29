@@ -1431,10 +1431,48 @@ not banned), since it currently contradicts this step's own feature.
 
 #### What Node Step 7 actually taught us
 
-*(Copilot: replace this placeholder with the real outcome once the step is done, matching the
-"What Node Step N actually taught us" sections above — what shipped, the real test count read from
-raw output, any judgment call made, any contract or spec gap found. Do not leave this placeholder
-in place after the step is complete.)*
+**Shipped**: `middleware/bodyLogging.ts`'s `bodyLoggingMiddleware`, registered in `app.ts` right
+after `requestContext` (there is no separate `requestLogger` middleware in this codebase yet — that
+gap against `architecture-specification.md`'s middleware order predates this step and is unrelated
+to it). Gated by `logger.isLevelEnabled('debug')`, so at the `info` default it does no wrapping, no
+cloning, and no redaction work at all — confirmed the existing 95 tests all still pass unmodified
+(104 total after this step's own 9 new tests: 7 unit + 2 integration). The real redaction fields
+fixed in `logger.ts`'s `REDACT_PATHS` per this step's own callout: `currentPassword`/`newPassword`
+were missing entirely (both as top-level and `*.`-prefixed paths); also switched from `remove: true`
+to `censor: '[REDACTED]'`, since the spec's own sample code censors rather than removes, and this
+step's "developer sees the field name plus a censor marker" goal needs the key to still be present.
+
+**Two real, non-obvious mechanics found by testing directly rather than assumed from the spec's
+prose, both load-bearing for correctness:**
+
+1. **`fast-redact` mutates its argument in place** (confirmed with a throwaway script before
+   relying on it) — applying it directly to `req.body` would have silently destroyed the real
+   card number/password the route handler still needed to process the request, a much worse bug
+   than a missing log line. Fixed by `structuredClone`-ing the body before redacting, never
+   redacting the live object.
+2. **`fast-redact`'s wildcard paths (`'*.cardNumber'`) match exactly one level of nesting, not
+   recursively** (also confirmed directly: `payment.cardNumber` matches, `requestBody.payment.
+   cardNumber` does not). This is why `bodyLoggingMiddleware` redacts each body object *directly*,
+   never nested under a wrapper key like `{ requestBody: ... }` first — doing so would have pushed
+   every field one level deeper and silently stopped matching, for exactly the payloads
+   (`POST /reservations`'s `payment.cardNumber`) this step exists to protect.
+
+**A third mechanic, needed only for this step's own integration tests**: pino's default
+destination (`SonicBoom` around file descriptor 1) writes directly to the fd and bypasses
+`process.stdout.write` entirely — spying on that method to capture real log output (the same
+grep-the-real-output discipline Spring Boot's `BodyLoggingFilterTest` used) silently captured
+nothing. Fixed by constructing `logger.ts`'s `pino(...)` call with `process.stdout` passed
+explicitly as its destination stream, which makes pino call `.write()` on it directly and makes
+the logger's real output observable in a test. Confirmed via a two-line reproduction before
+changing the production file. No behavior change for a real running process — it still writes to
+stdout either way.
+
+Both `POST /reservations` and `PUT /me/password` integration tests read the actual captured debug
+line's `requestBody`/`responseBody` fields and assert the raw submitted card number/passwords never
+appear anywhere in the captured output text, not only that the parsed fields equal the censor
+value.
+
+No contract or migration mismatch was found this step.
 
 ---
 

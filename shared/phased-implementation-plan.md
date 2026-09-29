@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Steps 0-2 (walking skeleton, sessions, public catalogue) done as of 2026-09-29; Node Steps 3-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Steps 0-4 (walking skeleton, sessions, public catalogue, availability search, booking) done as of 2026-09-29; Node Steps 5-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -1088,7 +1088,49 @@ request blocks and then fails — is worth writing at least once here too); the 
 calls above are documented in code comments, matching Spring Boot's; no mocked Prisma client
 appears anywhere in the exclusion-constraint test path.
 
-#### Node Step 5 (guest reservation management) — instructions for Copilot
+#### What Node Step 4 actually taught us — done 2026-09-29
+
+Shipped `POST /reservations` end to end: `domain/cancellation.ts`, `domain/allocation.ts`, and
+`domain/paymentValidation.ts` (three new pure modules, ported line-for-line from Spring Boot's
+`Cancellation`/`Allocation`/`PaymentValidation`), `lib/confirmationNumber.ts` and
+`lib/idempotencyCache.ts` (matching `ConfirmationNumberGenerator`/`IdempotencyCache` exactly), and
+`db/prismaErrors.ts` for the `23P01`/`23505` raw-SQLSTATE detection error-handling.md calls out as
+this stack's hardest problem. `bookingService.ts` runs the allocation retry (3 room candidates ×
+5 confirmation-number attempts each) entirely outside any `$transaction`, opening one fresh
+transaction per attempt via `repositories/reservationRepo.ts`'s `$queryRaw` insert (never
+`prisma.reservations.create`, specifically so a constraint violation surfaces `meta.code` rather
+than only a message string). 19 new tests (3 unit files, 16 integration — AC-OB-01 through
+AC-OB-07 including the stronger held-open-transaction form, AC-CX-10's serialized pricing,
+`PAYMENT_DECLINED`, Idempotency-Key replay), 71 total, all passing; `npm run ci` green.
+
+**The one real Node-specific discovery, confirmed rather than assumed from the spec's prose**:
+Prisma's raw-query errors (`$queryRaw`/`$executeRaw`) surface as a
+`PrismaClientKnownRequestError` with code `'P2010'` ("raw query failed"), whose `meta.code` holds
+the actual Postgres SQLSTATE — `'23P01'` for the exclusion-constraint violation the no-overbooking
+guarantee depends on, `'23505'` for the confirmation-number collision. This is what makes
+`isExclusionViolation`/`isConfirmationNumberCollision` a structured-field check rather than a
+message-text match, exactly as `error-handling.md`'s callout said would be possible if the insert
+went through `$queryRaw`.
+
+**Matched, not re-derived, all three named Spring Boot judgment calls**: `HA` + 8 Crockford-base32
+CSPRNG characters (`node:crypto`'s `randomInt`, not `Math.random`) for the confirmation number; the
+payment-decline check (a card ending `0000`) runs before allocation; the Idempotency-Key cache is
+an in-process `Map` with a stated 24-hour TTL, documented in its own module as a demo-scope
+limitation rather than presented as durable.
+
+**A test-fixture trap, not a production bug**: a reservations integration test file that logs
+guests in through the real, rate-limited `POST /auth/register` endpoint eventually 429s itself,
+since the rate limiter is shared per `createApp()` instance (one instance per test file, matching
+`availability.test.ts`'s existing pattern), not per test — registering more than 10 guests in one
+file makes later bookings fail with a confusing `401 AUTHENTICATION_REQUIRED` instead of exercising
+booking behavior at all. Fixed by creating the guest user and its session directly
+(`insertGuestUser` + `services/sessionService.createSession`), bypassing the endpoint and its rate
+limiter entirely for fixture setup — worth remembering for Step 5's reservation-management tests
+too, which will need just as many authenticated fixture guests.
+
+No contract or migration mismatch was found this step.
+
+
 
 **Scope.** `GET /reservations`, `GET /reservations/{reservationId}`,
 `PATCH /reservations/{reservationId}`, `POST /reservations/{reservationId}/cancel`, per

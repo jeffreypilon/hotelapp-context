@@ -20,12 +20,14 @@ Newest first within each section.
 | # | Repo | Summary | Priority | Found |
 |---|------|---------|----------|-------|
 | 1 | `hotelapp-client-react` | `npm run format:check` fails on 79 files — pre-existing Prettier style drift, not caused by any single change (confirmed via `git stash`). Purely cosmetic: does not affect `build`, `typecheck`, `lint`, `test:run`, or anything a user or reviewer running the app would see. No CI workflow exists in this repo yet to gate on it either. Deferred at Jeff's instruction (2026-09-29) — low priority, fix in a dedicated cleanup pass rather than folded into an unrelated commit | Low | 2026-09-29 |
+| 3 | `hotelapp-client-react` | `Profile` type declares `address` non-nullable, but `GET /me` returns `null` for a guest who has never set one — every read site survives only by accident via defensive `?.` optional chaining, no observed crash. Found 2026-09-29 by comparing against Angular's own `Profile` type, which typed it correctly (`Address \| null`) during Step 7. Purely a type-accuracy gap, not a functional defect | Low | 2026-09-29 |
 
 ## Fixed
 
 | # | Repo | Summary | Priority | Found | Fixed |
 |---|------|---------|----------|-------|-------|
-| — | *(none backfilled yet — this log was created 2026-09-29. Earlier defects found and fixed this session, e.g. `hotelapp-server-nodejs`'s own smaller `format:check` gap and the session-logout header bug in `hotelapp-client-react`, are recorded in their fix commits and in `claude-memory/hotelapp.md`, not retroactively added here unless asked.)* | | | | |
+| 2 | `hotelapp-server-nodejs` | `PATCH /me`'s `address.line2` was `.optional()` but not `.nullable()`, so an explicit `null` 400'd with `VALIDATION_FAILED`. Real functional impact, not theoretical: the already-shipped `hotelapp-client-react` always sends the `line2` key (`null` when blank, never omitted — see `buildProfilePatch.ts`), so any address save with no apartment/suite line failed against this backend specifically — most addresses. Found during Angular Step 7's live click-through against this backend, not caught by either client's own test suite | High | 2026-09-29 | `hotelapp-server-nodejs@701da20` |
+| — | *(defects found and fixed before this log existed, e.g. `hotelapp-server-nodejs`'s own smaller `format:check` gap and the session-logout header bug in `hotelapp-client-react`, are recorded in their fix commits and in `claude-memory/hotelapp.md`, not retroactively added here unless asked.)* | | | | |
 
 ---
 

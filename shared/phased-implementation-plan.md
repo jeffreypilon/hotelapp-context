@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Steps 0-4 (walking skeleton, sessions, public catalogue, availability search, booking) done as of 2026-09-29; Node Steps 5-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -1296,6 +1296,49 @@ since this is the one endpoint in the whole contract where that distinction is l
 complete**, the same milestone Spring Boot reached at its own Step 6; the outcome note for this
 step says so explicitly and updates the Phase 6 status table above accordingly, the same update
 this document needed (and initially missed) after Spring Boot's own Step 6.
+
+#### What Node Step 6 actually taught us — done 2026-09-29
+
+Shipped `GET /me`, `PATCH /me`, `PUT /me/password`. **This closes Node's guest-facing slice
+(Phase 6 items 1-8)**, the same milestone Spring Boot reached at its own Step 6 — see the Phase 6
+status table above, updated accordingly. `GET /me`/`PATCH /me` are distinct from the existing
+`GET /auth/me` (the lighter `{ user }` bootstrap shape from Step 1): the new router returns the
+full, flat profile object, including `phone`, `address`, and `createdAt`. 9 new integration tests,
+104 total, all passing.
+
+**The omitted-vs-null design this document proposed on Node's behalf (see the instructions above)
+was verified against zod 3.24.4's actual parse output before being relied on, not assumed:** for
+an optional key absent from the request body, the parsed result object genuinely omits the key
+(`'phone' in result` is `false`); for an explicit `null`, the key is present with that value. A
+throwaway script (`node` + a two-line `.parse({})` vs `.parse({ b: null })` check) confirmed this
+before any route code was written. Since a parsed JSON body can never contain a literal
+`undefined` (JSON has no such value), `body.phone !== undefined` in the route handler is exactly
+"the key was present in the request" — no raw-body/`req.body` presence-checking workaround
+(let alone Spring's `JsonNode` escape hatch) was needed at all, confirming the document's
+prediction.
+
+**`address` replaces the whole sub-object, matching Spring Boot's judgment call**: sending a new
+`address` with no `line2` clears a previously-set `line2` rather than preserving it — tested
+directly (set an address with `line2`, then replace it with one omitting `line2`, assert the
+response's `line2` is `null`). `address: null` clears all six columns in one call.
+
+`.strict()` on `patchMeSchema` is what makes `role`/`isActive` a `400 VALIDATION_FAILED`
+(AC-AZ-09's second half) with the profile provably unchanged afterward (asserted with a direct
+`prisma.users.findUniqueOrThrow`, not just the response status) — neither field is declared in
+the schema at all, so `.strict()` rejects them as unrecognized keys before any handler code runs.
+
+`PUT /me/password` reuses `sessionService`'s existing `createSession`/session-repo pattern: a new
+`revokeAllSessionsExcept(db, clock, userId, exceptSessionId)` (service) /
+`revokeAllSessionsForUserExcept` (repository) pair, excluding the caller's own `req.context.session.id`
+via `id: { not: exceptSessionId }`. AC-SE-07 is tested exactly as specified: three real sessions,
+change from the first, assert the first still works and the other two now 401.
+
+The common-password deny-list (`lib/commonPasswords.ts`, built for registration in Step 1) is
+reused unmodified for `newPassword` via the shared `password` Zod schema, now exported from
+`auth.schema.ts` instead of being module-private — one rule, one place, per
+coding-standards.md's "a second copy of any shared rule" prohibition.
+
+No contract or migration mismatch was found this step.
 
 ---
 

@@ -37,11 +37,8 @@ again, as long as both are running against the same database. Sessions are still
   `environment-setup-guide.md` for the one-time setup; this document only covers day-to-day
   running and switching.
 - `mvn -v` resolves at all, and reports the Java version `hotelapp-server-springboot/pom.xml`
-  pins (`<java.version>`). **A `mvn` not found on `PATH`, or a JDK version mismatch between
-  `JAVA_HOME` and that pin, is a common per-machine gap this guide cannot fix generically** — it
-  depends on how Maven and the JDK were installed on this machine, not on anything in this
-  project. If either is wrong, see `hotelapp-server-springboot`'s own Copilot instructions for how
-  that repo's own environment was actually resolved, rather than guessing.
+  pins (`<java.version>`). On a machine where either is wrong — a common, purely local setup gap,
+  not a project defect — see the override in "Starting a backend" below.
 
 ## Starting a backend
 
@@ -54,6 +51,24 @@ below need a `-f`/`--prefix` path argument.
 ```powershell
 mvn spring-boot:run
 ```
+
+**On this machine, that alone is not enough** — `mvn` is not on `PATH`, and the default
+`JAVA_HOME` (JDK 23) is newer than this project's pinned `<java.version>21</java.version>`. Both
+must be set in the same terminal session first, as one three-line unit, not the last line alone in
+a fresh terminal:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
+$env:PATH = "$env:JAVA_HOME\bin;C:\Users\Jeff\tools\apache-maven-3.9.16\bin;$env:PATH"
+mvn spring-boot:run
+```
+
+This is confirmed working on this machine specifically — a different machine may already have
+`mvn` on `PATH` and the right `JAVA_HOME`, in which case the plain `mvn spring-boot:run` above is
+enough and this override isn't needed. Only needs retyping once per new terminal window/tab, not
+before every `mvn` command in one already-configured session. Same detail lives in
+`hotelapp-server-springboot`'s own Copilot instructions; kept here too since this is where Jeff
+actually looks first when starting a backend.
 
 Use `./mvnw` instead of a system `mvn` once the wrapper exists in that repo (not committed as of
 this writing — see that repo's own Copilot instructions). Confirm it is up:

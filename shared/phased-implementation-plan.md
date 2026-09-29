@@ -1130,7 +1130,7 @@ too, which will need just as many authenticated fixture guests.
 
 No contract or migration mismatch was found this step.
 
-
+#### Node Step 5 (guest reservation management) — instructions for Copilot
 
 **Scope.** `GET /reservations`, `GET /reservations/{reservationId}`,
 `PATCH /reservations/{reservationId}`, `POST /reservations/{reservationId}/cancel`, per

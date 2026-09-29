@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
+| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Step 1 (foundation, S1) is now done too, against live Node. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -1961,6 +1961,67 @@ anonymous-vs-resolving distinction correctly) and confirm `localStorage`/`sessio
 empty, per
 [environment-setup-guide.md](../stacks/angular/environment-setup-guide.md#verifying-the-setup-works)'s
 own step 6, "the one people skip and the one that catches a real policy breach."
+
+### Angular Step 1 (foundation) — done 2026-09-29
+
+`hotelapp-client-angular@1d64fe2`. Scaffolded the repo from nothing (it held only a README and
+`.github/copilot-instructions.md` before this step): Angular 22.2 standalone app via
+`@angular/cli@22`, Tailwind v4 (`@tailwindcss/postcss`, no custom theme -- same default palette
+React already uses), `@ngrx/signals`/`@ngrx/operators`, `@angular/aria` installed (not yet used --
+Step 1's one dropdown menu was hand-rolled with plain ARIA attributes instead; see judgment calls
+below), `angular-eslint` + Prettier, and the Angular CLI's own built-in Vitest unit-test builder
+(`@angular/build:unit-test`) rather than a separate Analog/Vitest integration.
+
+**Verified by execution, not self-summary, per standing rule 3**: `npm run ci` (lint,
+format:check, typecheck, test:run, build) read directly from raw terminal output, all green.
+15 tests, 0 failures. Initial bundle **79.93 KB gzip** -- comfortably under the 300 KB budget
+(architecture-specification.md), with the admin area not yet built to inflate it. `git log`/
+`git status` confirmed clean and pushed before reporting done here, per the same standing rule.
+
+**Manually verified against a live `hotelapp-server-nodejs` on `:3000`** (started fresh for this
+step, not assumed running): property list renders both seeded properties with photos, matches
+`hotelapp-client-react`'s `:5173` rendering of the same data byte-for-byte visually at 1280x800
+(standing rule 6 -- screenshots compared side by side, indistinguishable), reload preserves the
+anonymous state correctly (no hang, no flash of a stale state), and `localStorage`/
+`sessionStorage` both confirmed empty via a direct `page.evaluate` length check, per
+environment-setup-guide.md's step 6.
+
+**Judgment calls, disclosed per standing rule 5:**
+
+- **The user-account dropdown menu (Header's `UserArea`) was hand-rolled with plain `role="menu"`/
+  `role="menuitem"` attributes and manual outside-click/Escape handling**, matching React's own
+  implementation almost line-for-line, rather than built on `@angular/aria`'s menu primitive. The
+  package is installed and dependency-policy.md approves it, but with Step 1 already covering a
+  large surface (toolchain + session + S1), spending time confirming this specific Angular 22.2
+  release's exact `@angular/aria` menu API surface felt like the wrong place to gamble under time
+  pressure. **Worth revisiting in a later step**: swap in the real Angular ARIA menu directive once
+  its API is confirmed, since that's the actual reason the package was approved over a hand-rolled
+  pattern.
+- **`switchMap`'s test came out stronger than the state-management.md wording implies.** The spec
+  says a late response should be "discarded"; what Angular's `HttpClient` + `rxMethod` actually do
+  is **cancel the underlying HTTP request outright** on unsubscribe (confirmed via
+  `HttpTestingController`: flushing an unsubscribed request throws "Cannot flush a cancelled
+  request" rather than silently succeeding). Rewrote that test to assert `request.cancelled` rather
+  than trying to flush both requests and check which one won -- a strictly stronger guarantee than
+  the React client's fetch-based equivalent can make, and worth calling out since it wasn't
+  obvious going in.
+- **`core/api/http.interceptor.ts` decides "is this an API request" via `req.url.startsWith('/')`**
+  rather than always prefixing unconditionally. Every request this app makes today is relative
+  (`/properties`, `/auth/me`), so the branch is currently dead code, but it's cheap insurance
+  against a future absolute-URL request (e.g. a third-party asset) being silently rewritten to
+  point at the API host. Flagging in case a later step finds this unnecessary and wants to simplify.
+- **`preview` (the runtime `config.js` mechanism check from environment-setup-guide.md) is a
+  50-line hand-written `node:http` static file server (`scripts/preview-server.mjs`)** instead of
+  pulling in `http-server` or similar, per dependency-policy.md's "could fifty lines replace it?"
+  question -- not run as part of `npm run ci`, only documented as available.
+- **`strict: true` and `strictTemplates: true` were added explicitly to `tsconfig.json`** -- the
+  Angular 22 CLI's 2025-style-guide schematic no longer sets a blanket `"strict": true`, instead
+  enabling a named subset (`noImplicitOverride`, `noImplicitReturns`, etc.) that is close to but not
+  exactly `strict` mode. architecture-specification.md's "not negotiable" framing reads as the
+  full flag, so it was added rather than assumed already covered.
+
+No contract or shared-spec defect was found this step -- `GET /properties` behaved exactly as
+`hotelapp-client-react`'s own Step 0/1 already characterized it.
 
 #### Angular Step 2 (public browsing: property detail, room types) — instructions for Copilot
 

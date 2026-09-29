@@ -2590,6 +2590,75 @@ with a card ending `0000` → field-level decline message with the form retained
 React's `:5173` (standing rule 6), the demo-payment banner, the price-breakdown block, and the
 confirmation number's prominent treatment all read as the same product.
 
+### Angular Step 5 (booking flow: summary, payment, confirmation) — done 2026-09-29
+
+`hotelapp-client-angular`. Built S4 (`BookingSummaryScreen`), S6 (`PaymentScreen`), S7
+(`ConfirmationScreen`), the shared `BookingSummaryCard` (full/condensed variants), and a
+route-provided `BookingStore` spanning all three screens per state-management.md's table — booking
+context itself stays in the URL query string, never the store, so it survives the S5 login detour
+and a full page reload. Ported `cancellation-deadline.ts`, `card-number.ts`, and `digits-only.ts`
+from the React client verbatim (same `Intl.DateTimeFormat` `longOffset`/spelled-out-components
+approach), each shipped with its own test from the start — `cancellation-deadline.spec.ts` pinned
+to the same AC-CX-04/AC-CX-05 worked examples React's Step 5 used, per this file's standing rule
+about not repeating that gap a second time. `format.ts` gained `formatDate`/`formatTimestamp`
+alongside the existing `formatMoney`. Reactive Forms again (not Signal Forms), continuing Step 4's
+established pattern; a Luhn check plus expiry/CVV validators live directly in `payment-screen.ts`,
+matching where Step 4's `phoneValidator` lives.
+
+**Angular-specific implementation, per this step's own instructions:** `CanDeactivateFn` +
+`beforeunload` together block navigation during submission — Angular's real, better-supported
+equivalent of React's `useBlocker` workaround. The guard is wired into `app.routes.ts` via a
+dynamic-`import()` wrapper rather than a static import of the guard function, specifically so
+`PaymentScreen`'s own lazy `loadComponent` chunk stays lazy (confirmed in the production build:
+`payment-screen` is its own ~14 KB chunk, not folded into the eagerly-loaded route config). Card
+data (number, CVV, expiry) and the Idempotency-Key (`crypto.randomUUID()`, generated once on
+construction, never per submit attempt) live only in `PaymentScreen`'s own component state, never
+in `BookingStore` — per security-implementation.md#payment-data. Since this stack has no
+TanStack-Query-style shared cache to pre-warm the way React's Step 5 did, the just-created
+reservation is instead carried from S6 to S7 via `Router.navigate(..., { state })` and read back
+via `history.state` (guarded against stale reuse by checking the carried object's `id` matches the
+current route param) — S7 falls back to a real `GET /reservations/{id}` via `BookingStore` on a
+direct load/share/reload, same observable behavior as React's cache-warm-then-fallback approach.
+
+**A real bug was found and fixed during manual verification, not just by the test suite.** The
+`CanDeactivateFn` guard reads `isSubmitting()` to decide whether to allow leaving the payment
+screen — but `onSubmit()`'s own success path calls `router.navigate()` to leave for S7 while
+`isSubmitting` was still `true` (it was only cleared in a later `finally`), so the guard blocked
+its *own* component's successful exit. Confirmed live: clicking "Confirm booking" twice produced
+two `201`s for the *same* reservation id (the Idempotency-Key correctly deduped the actual
+booking), yet the URL never changed to the confirmation route until this was fixed by clearing
+`isSubmitting` immediately before the success-path `navigate()` call, not only in `finally`. No
+unit test caught this — the stubbed-guard/router test setup doesn't reproduce it — only the
+required live click-through did, which is exactly why that step is mandatory rather than optional
+once the automated suite is green. Recorded in repo memory as a pattern to watch for in any future
+`CanDeactivateFn`.
+
+**Verified by execution**: `npm run ci` green (129 tests total, 25 test files, up from 104/24 —
+new: `format.spec.ts`'s `formatDate`/`formatTimestamp` cases, `cancellation-deadline.spec.ts`,
+`card-number.spec.ts`, `digits-only.spec.ts`, `booking.store.spec.ts`, `booking-summary-screen.spec.ts`,
+`payment-screen.spec.ts`). The two named highest-value tests from this step's own instructions both
+pass: the Idempotency-Key-identical-across-two-submit-attempts test, and a test confirming card
+number/CVV/expiry never appear in the outgoing request body as a raw display-formatted string nor
+in `localStorage`. The login-detour test for S4 confirms an anonymous guest hitting
+`/properties/:id/book` with a full query string is redirected to `/login?next=` carrying that exact
+path and query intact. Production build confirms `payment-screen`, `booking-summary-screen`, and
+`confirmation-screen` are each their own lazy chunk.
+
+**Manually verified against a live `hotelapp-server-nodejs`**, side by side with the pattern
+established in prior steps: registered a fresh guest, searched Harborview Grand for the seeded
+KING room type, hit the auth gate anonymously and confirmed the full booking context (room type,
+dates, guests, rate category) survived the register round-trip back to S4; S4 rendered the price
+breakdown and cancellation deadline with zone abbreviation ("Nov 12, 2026, 12:00 AM EST") exactly
+per spec; continued to S6, watched the card-number field live-format into groups of four while
+typing; submitted `4242 4242 4242 4242` and landed on S7 with a real confirmation number; reloaded
+the confirmation URL fresh and confirmed it re-fetched rather than reusing stale state; returned to
+S6 and submitted a Luhn-valid card ending `0000`, confirming the exact field-level decline message
+with the form retained.
+
+No contract or shared-spec defect was found this step — `POST /reservations`'s request/response
+shape, the `Idempotency-Key` replay behavior, and the deterministic decline case all matched
+api-contracts.md exactly.
+
 #### Angular Step 6 (guest reservation history, modify, cancel: S8b/S8c) — instructions for Copilot
 
 **Scope.** S8b (the four-tab reservation list) and S8c (detail, with status-gated modify/cancel)

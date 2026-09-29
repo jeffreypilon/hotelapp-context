@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Node has not been started, but detailed step-by-step build instructions for Copilot now exist below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Step 0 (walking skeleton: health, properties, 5 integration tests) is done as of 2026-09-29; Node Steps 1-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -748,6 +748,46 @@ cross-backend walkthrough succeeds by hand at least once, and `hotelapp-server-n
 Copilot instructions are updated with the endpoint status and current test count (its "Build,
 test, and lint — NOT YET ESTABLISHED" section is stale the moment real commands exist to put
 there).
+
+#### What Node Step 0 actually taught us — done 2026-09-29
+
+Shipped: project skeleton (`config/`, `middleware/`, `errors/`, `dto/`, `repositories/`,
+`services/`, `routes/`), `GET /health`, `GET /properties` (with `sort`/`city`/`q`/pagination,
+ahead of Step 2's minimum), the RFC 9457 error middleware and `AppError` hierarchy for the full
+16-code catalogue (only `NOT_FOUND` and `VALIDATION_FAILED` are actually raised yet), `npm run
+dev` on `:3000`. **5 integration tests, read from raw `vitest run` output, all passing** against a
+real Testcontainers `postgres:18.6` migrated by the **Flyway CLI** (never `prisma migrate`) —
+`GET /health`, `GET /properties` filtering to active-only with every nullable field explicit,
+pageSize validation (`400`, never clamped), city filtering, and the Problem Details `404` shape.
+
+**Verified byte-comparable against the live Spring Boot backend**, not just visually: `(nodeJson
+| ConvertTo-Json) -eq (springJson | ConvertTo-Json)` on `GET /properties` returned `True` —
+identical field names, identical explicit `null`s, identical `roomTypeCount`. Then
+`hotelapp-client-react`'s `VITE_API_BASE_URL` was pointed at `:3000` and S1 (the property list)
+rendered the same two seeded properties with **no frontend code change** — the concrete
+"either frontend against either backend" proof this step exists to produce — then reverted back
+to `:8080` afterward, since this was a one-time verification, not a change of the React repo's
+default backend.
+
+**One deliberate deviation, disclosed rather than worked around**: `architecture-specification.md`
+and `dependency-policy.md`'s `prisma`/`@prisma/client` guidance predates Prisma 7's breaking
+config-model change (`datasource.url` in `schema.prisma` no longer works at all under Prisma 7 —
+`db pull` fails outright with `P1012`). Pinned both to **`6.12.0`** instead of the newest 6.x —
+the specific patch that predates `@prisma/config` being pulled in as a transitive dependency,
+which is what a newer 6.x carries a HIGH-severity `deepmerge-ts` advisory through
+(`GHSA-ggr8-5vv4-36mx`, in the CLI tool only, never reachable from the running server).
+`npm audit --omit=dev` is 0 vulnerabilities at this pin; `express` was also bumped from the
+spec's `4.21.2` to `4.22.3` (still Express 4) to clear an unrelated `path-to-regexp`/`qs` chain.
+Full detail in `claude-memory` (this machine's local-environment notes) since it is a toolchain
+fact, not a contract fact — no `api-contracts.md` change was needed, and none of Step 0's actual
+wire-format findings (there were none — Step 0 found no contract defect this time, unlike Spring
+Boot's) are affected by it.
+
+**Judgment call, disclosed**: no OpenAPI document was started this step. `architecture-
+specification.md#openapi` describes a hand-maintained `openapi/spec.ts`, but nothing in Step 0's
+own "Done when" section requires it, and writing one now for two endpoints (one of them
+operational) would be speculative. Deferred to whichever step first needs the cross-backend
+OpenAPI diff to mean something.
 
 #### Node Step 2 (public catalogue) — instructions for Copilot
 

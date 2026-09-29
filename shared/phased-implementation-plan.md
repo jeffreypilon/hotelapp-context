@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-2 (foundation and property detail/room types, S1-S2) are now done too, against live Node. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
+| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-3 (foundation, property detail/room types, and search/results, S1-S3) are now done too, against live Node. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -2246,6 +2246,47 @@ that this is a step where the coverage discipline is easy to skip under time pre
 passes, and side by side with React's `:5173` (standing rule 6) the search form, filter sidebar, and
 result cards read as the same product — including the exact wording and placement of scarcity text
 and the struck-through base-rate treatment, which are easy to approximate rather than match exactly.
+
+### Angular Step 3 (search and results) — done 2026-09-29
+
+`hotelapp-client-angular@ead4083`. Built S3 in full: the search form (dates, guests, special rate
+with "Clear selection"), a `lg:flex-row` filter sidebar (room type, amenities, accessible-only,
+nightly-rate min/max, each its own `fieldset`/`legend`), sort, and result cards with discount
+pricing (struck-through base rate, "N nights · $total total", rate-category label) and scarcity
+text. `AvailabilityStore` (route-provided) uses `switchMap`; `ReferenceDataStore` (root-provided)
+fetches `GET /amenities`/`GET /rate-categories` once per session via a `loadOnce` guard standing in
+for React's `staleTime: Infinity`. Client-side date pre-validation (`shared/util/date-validation.ts`)
+reuses error-handling.md's exact field-code wording. Filter/search state reads from the URL via
+`toSignal(route.queryParamMap)`, mirroring Step 1's debounce-and-diff-against-current-params fix for
+the nightly-rate min/max inputs.
+
+**Verified by execution**: `npm run ci` green, 48 tests across 12 files (11 new: date-validation,
+the shared `rateCategoryLabel` lookup, `AvailabilityStore` including the switchMap-discards-stale-
+response test, `ReferenceDataStore`, and `SearchScreen`'s component states tested via
+`RouterTestingHarness` rather than a manually-constructed `ActivatedRoute`). Initial bundle 80.50 KB
+gzip, still comfortably under budget. **Manually verified against a live `hotelapp-server-nodejs`**
+with the database's existing seeded rooms (Harborview Grand: 4 KING, 3 DOUBLE, 2 SUITE, 1
+CONFERENCE_ROOM): KING shows no scarcity text, DOUBLE "Only 3 rooms left", SUITE "Only 2 rooms
+left", the Conference Room "Only 1 room left" alongside "Capacity 20"/"$349.00 / day" wording; the
+seeded AAA/CAA 10% rate plan renders a struck-through base rate and "AAA/CAA rate applied" on every
+card; `numGuests=3` correctly excludes KING (`maxOccupancy` 2); check-out before check-in shows the
+client-side message without ever calling `GET /availability`; Lakeside Inn (which has no SUITE room
+type) searched with `roomTypeCode=SUITE` renders the empty-success state, never an error. Side by
+side with React's `:5173` for the identical URL, the accessibility tree and rendered text came back
+byte-identical.
+
+**Judgment call, disclosed per standing rule 5 — NOT_FOUND's page-level treatment.** This file's
+instructions above specified only the copy ("We couldn't find that hotel.") for S3's `NOT_FOUND`
+case, not its layout. The implementation matches the React client's own judgment call (and this
+repo's `PropertyDetailScreen`) rather than inventing a different one: an unknown property replaces
+the entire screen with a centered message and a "Back to our hotels" link, not an inline alert next
+to a now-useless search form and empty sidebar — discovered as a real gap during manual
+verification (the first pass showed a generic alert while `GET /rate-categories`'s filter sidebar
+stayed visible and interactive around it) and fixed before commit, covered by the existing test.
+
+No contract or shared-spec defect was found this step — `GET /availability`'s pricing block, the
+`field:asc`/`field:desc` sort convention, and the reference-list endpoints all behaved exactly as
+`hotelapp-client-react`'s own Step 3 already characterized them.
 
 #### Angular Step 4 (auth: login, registration, route guards) — instructions for Copilot
 

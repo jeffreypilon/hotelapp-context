@@ -981,6 +981,40 @@ plan uses the GiST index backing `reservations_no_overlap_excl` rather than a se
 unit-tested exhaustively per the standing rule above; no contract or migration mismatch is found
 (if one is, it is corrected in `api-contracts.md`/`data-model.md` first, per the standing rules).
 
+#### What Node Step 3 actually taught us — done 2026-09-29
+
+Shipped `GET /availability` end to end: the physical-room anti-join as one hand-written
+`$queryRaw` (`Prisma.sql` fragments nested inside a parent template, `Prisma.empty` for absent
+optional filters, `Prisma.join` for `IN (...)` lists — no string concatenation anywhere), pure
+`domain/pricing.ts` ported line-for-line from `Pricing.java`, and filtering/sorting/pagination in
+application code on the discounted rate, matching Spring Boot's Step 3 approach exactly. 15 new
+tests (6 unit on `domain/pricing.ts`, 9 integration), on top of Step 0–2's 27 (42 total), all
+passing; `npm run ci` (lint, format:check, typecheck, test:run, build) green.
+
+**Matched, not re-derived, both Spring Boot judgment calls**: a `rateCategory` with no active
+`rate_plans` row resolves to a 0% discount, same as `NONE`, room type stays in results; nightly
+rate rounds to the cent first, then multiplies by nights. The 100.01/33.33%/3-nights case that
+actually distinguishes rounding order from the 249.00/10%/3-nights case is unit-tested directly
+against the same two fixture numbers Spring Boot's `PricingTest`/`AvailabilityIT` use, so the two
+implementations are directly comparable line for line.
+
+**The required `EXPLAIN` assertion is a real automated test, not a manual check**: seeds 2000
+synthetic reservations (one each on 2000 distinct decoy rooms, generated with client-side
+`randomUUID()` ids so both bulk inserts run in two round trips with no query needed to learn
+generated ids afterward), `ANALYZE`s the affected tables, then calls the exact production query
+function in `EXPLAIN (ANALYZE, BUFFERS)` mode and asserts the plan uses
+`reservations_no_overlap_excl` rather than a sequential scan on `reservations`.
+
+**One schema detail not called out explicitly anywhere it was needed**: `reservations_status_
+timestamps_chk` requires `cancelled_at IS NOT NULL` whenever `status = 'CANCELLED'` (matching the
+same requirement for `checked_in_at`/`checked_out_at`) — a test fixture builder inserting a
+CANCELLED reservation without setting `cancelled_at` fails at the database with a `23514` check
+violation, not a Prisma-level validation error. Worth a one-line mention in `data-model.md`'s own
+constraint section for whichever backend hits this fixture-building requirement next.
+
+No contract or migration mismatch was found this step — `api-contracts.md`'s availability-search
+section and `data-model.md`'s no-overbooking section matched what was needed without correction.
+
 #### Node Step 4 (booking: POST /reservations) — instructions for Copilot
 
 **Scope.** `POST /reservations`, per

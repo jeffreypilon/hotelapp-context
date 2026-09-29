@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Step 0 (walking skeleton: health, properties, 5 integration tests) is done as of 2026-09-29; Node Steps 1-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Steps 0-1 (walking skeleton, sessions) done as of 2026-09-29; Node Steps 2-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -788,6 +788,46 @@ specification.md#openapi` describes a hand-maintained `openapi/spec.ts`, but not
 own "Done when" section requires it, and writing one now for two endpoints (one of them
 operational) would be speculative. Deferred to whichever step first needs the cross-backend
 OpenAPI diff to mean something.
+
+#### What Node Step 1 actually taught us — done 2026-09-29
+
+Shipped: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`. Session
+rows via `crypto.randomBytes(32)` + SHA-256 hash, the six-step validate-and-slide sequence split
+between `middleware/session.ts` (cookie I/O) and the Express-free `services/sessionService.ts`
+(steps 2-6, unit-testable on its own), `middleware/rateLimit.ts` (dual IP+email `express-rate-limit`
+factories, one instance per `createApp()` call so tests don't trip each other's counters), bcrypt
+cost 12 with a lazily-computed dummy hash for timing equality on the unknown-email login path, and
+a curated common-password deny-list applied at the Zod validation boundary. **18 integration tests
+total (13 new), read from raw `vitest run` output, all passing**: AC-SE-01 through AC-SE-04,
+AC-SE-06, AC-SE-08 (all three parts — slide, throttle, absolute cap — driven by an injectable
+`TimeSource`/`ManualClock`), AC-SE-09 (rate limit trips at 11, a correct password inside the window
+still `429`), AC-SE-10 (unknown email vs. wrong password, identical body), and both halves of
+AC-AZ-11 (login against a deactivated account; a live session deactivated mid-session). AC-SE-05's
+single-process approximation (seed a `sessions` row directly, assert this backend honors it) is
+also a required test and passes.
+
+**AC-SE-05 verified by hand against a live Spring Boot on `:8080`**, per the step's own
+requirement: registered against Node, called `GET /auth/me` against Spring Boot with Node's cookie
+and got the same user back, logged out from Spring Boot, then called Node's `/auth/me` with the
+same cookie and got `401` immediately. **First attempt gave a false negative** using PowerShell's
+`Invoke-RestMethod -SessionVariable` — its underlying `WebRequestSession`/`CookieContainer` appears
+to scope cookies per-port rather than per-host, so a cookie obtained from `:3000` was not attached
+to a request to `:8080` even though both are `localhost` and RFC 6265 cookies are host-scoped, not
+port-scoped. Switching to `curl`'s cookie jar (`-c`/`-b`, the same tool
+`environment-setup-guide.md`'s own example uses) reproduced real browser behavior and confirmed the
+session interoperability holds. **Worth flagging for anyone reaching for PowerShell's session
+cmdlets for this kind of cross-port manual check again** — `curl` is the reliable tool for it, not
+a `WebSession` object.
+
+**No contract defect found.** `api-contracts.md`'s authentication section and
+`architecture-specification.md#session-handling`'s six-step sequence matched what was needed
+without correction.
+
+**One judgment call, disclosed**: the common-password deny-list (`src/lib/commonPasswords.ts`) is
+a curated ~60-entry list, not an exhaustive breach-corpus check (no such corpus is bundled per
+`dependency-policy.md`'s no-new-dependency-for-this stance). Stated as a limitation in the file
+itself, matching `security-principles.md#passwords`'s own phrasing that length beats composition
+rules and a full deny-list is aspirational, not required.
 
 #### Node Step 2 (public catalogue) — instructions for Copilot
 

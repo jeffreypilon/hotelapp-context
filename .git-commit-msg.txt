@@ -1,0 +1,7 @@
+docs: record Node Step 2 outcome in phased-implementation-plan.md
+
+Public catalogue endpoints done and verified: 27 integration tests total (9 new). Money-
+as-string check closed on both room-type shapes. Confirmed the roomTypes summary shape
+matches Spring Boot/React's prior finding. Flagged a plan-wording slip: room_types has no
+slug column, so GET /room-types/{roomTypeId} is UUID-only, matching Spring Boot. No
+contract defect found.

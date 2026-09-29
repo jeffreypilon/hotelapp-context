@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Steps 0-1 (walking skeleton, sessions) done as of 2026-09-29; Node Steps 2-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete. Node Steps 0-2 (walking skeleton, sessions, public catalogue) done as of 2026-09-29; Node Steps 3-6 remain, with detailed step-by-step build instructions for Copilot below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -882,6 +882,44 @@ requests); the public-catalogue half of
 test file, not a comment claiming it was checked; `hotelapp-context`'s own note about the
 `RoomTypeSummaryResponse` shape (still phrased as an open judgment call in Spring Boot's Step 2
 outcome above) can be considered doubly confirmed and this step's outcome note should say so.
+
+#### What Node Step 2 actually taught us — done 2026-09-29
+
+Shipped: `GET /properties/{propertyId}` (UUID or slug, plus its embedded `roomTypes` in the
+confirmed-flat summary form), `GET /properties/{propertyId}/room-types` (full shape with
+`amenities`/`photos`), `GET /room-types/{roomTypeId}`, `GET /amenities`, `GET /rate-categories`.
+9 new integration tests, all passing, on top of Step 0/1's 18 (27 total). `npm run lint`,
+`typecheck`, `build`, and `format:check` all clean; `npm audit --omit=dev` still 0
+vulnerabilities.
+
+**The money-as-string check Step 0 flagged as still open is now closed**, on both the summary and
+full room-type shapes: asserted against raw response text (`res.text`), not a parsed body, that
+`baseRate` serializes as `"249.00"` and never the bare number `249`. `Prisma.Decimal.toFixed(2)`
+(`src/lib/money.ts`) is exact for this column's `numeric(10,2)` domain — no floating-point
+rounding step is involved, unlike a `Number()` conversion would be.
+
+**Confirmed, not re-derived**: `GET /properties/{propertyId}`'s embedded `roomTypes` is the flat
+summary shape (`id, code, name, baseRate, currency, maxOccupancy, bedConfiguration,
+isAccessible` — no `amenities`/`photos`), matching Spring Boot's `RoomTypeSummaryResponse` and
+confirmed independently by curling the live Spring Boot backend in the React client's Phase 7
+Step 2. Typed as a distinct `RoomTypeSummaryDto`, not the full `RoomTypeDto` with fields
+conditionally omitted.
+
+**One divergence from the plan's own instructions, disclosed**: `room_types` has no `slug` column
+in `data-model.md` — only `properties` does. The plan's blanket statement that "`GET
+/properties/{propertyId}` and `GET /room-types/{roomTypeId}` accept either a UUID or a slug"
+does not hold for the room-type endpoint; Spring Boot's own `RoomTypeController` also only ever
+takes a UUID path variable, confirming this is a plan wording slip rather than a Node-specific
+choice. Node matches Spring Boot: a non-UUID-shaped `roomTypeId` is a `404 NOT_FOUND` (checked
+before querying, so a malformed value never reaches a `uuid`-typed column and produces a
+database-level `500`), not a slug lookup.
+
+**`select` used throughout, including nested relations** (`room_type_amenities` → `amenities`,
+`room_type_photos`) fetched in one query via nested `select`, never per-row in a loop — no
+`include` with a bare object was used anywhere in this step.
+
+No contract defect found. `api-contracts.md`'s public catalogue section matched what was needed
+without correction.
 
 #### Node Step 3 (availability search) — instructions for Copilot
 

@@ -36,13 +36,23 @@ again, as long as both are running against the same database. Sessions are still
   `.env`/`.env.local` copied from its `.example`). See each stack's own
   `environment-setup-guide.md` for the one-time setup; this document only covers day-to-day
   running and switching.
+- `mvn -v` resolves at all, and reports the Java version `hotelapp-server-springboot/pom.xml`
+  pins (`<java.version>`). **A `mvn` not found on `PATH`, or a JDK version mismatch between
+  `JAVA_HOME` and that pin, is a common per-machine gap this guide cannot fix generically** — it
+  depends on how Maven and the JDK were installed on this machine, not on anything in this
+  project. If either is wrong, see `hotelapp-server-springboot`'s own Copilot instructions for how
+  that repo's own environment was actually resolved, rather than guessing.
 
 ## Starting a backend
 
-**Spring Boot** (port 8080, applies Flyway migrations on startup):
+Run each command from inside that repo's own directory (`cd` there first) — none of the commands
+below need a `-f`/`--prefix` path argument.
+
+**Spring Boot** (port 8080, applies Flyway migrations on startup), from
+`hotelapp-server-springboot`:
 
 ```powershell
-mvn -f "<path-to>\hotelapp-server-springboot\pom.xml" spring-boot:run
+mvn spring-boot:run
 ```
 
 Use `./mvnw` instead of a system `mvn` once the wrapper exists in that repo (not committed as of
@@ -53,10 +63,10 @@ curl http://localhost:8080/api/v1/health
 ```
 
 **Node.js** (port 3000, never migrates — the database must already have been migrated by Spring
-Boot at least once):
+Boot at least once), from `hotelapp-server-nodejs`:
 
 ```powershell
-npm --prefix "<path-to>\hotelapp-server-nodejs" run dev
+npm run dev
 ```
 
 Confirm it is up:
@@ -85,8 +95,9 @@ in dev).
    ```
 2. **Restart** the dev server — Vite inlines `VITE_*` values at startup; editing `.env.local`
    while `npm run dev` is already running has no effect until it is stopped and started again.
+   From inside `hotelapp-client-react`:
    ```powershell
-   npm --prefix "<path-to>\hotelapp-client-react" run dev
+   npm run dev
    ```
 
 To switch backends mid-session: stop the old backend, start the new one, edit `.env.local`, and
@@ -110,3 +121,5 @@ that repo exists.
 | `GET /auth/me` specifically fails as an opaque CORS/network error, but other endpoints work | The known, currently-unfixed Spring Boot defect: its `401`/`403` responses raised before Spring MVC's dispatcher (e.g. an anonymous `GET /auth/me`) are missing CORS headers. Confirmed via `curl -H "Origin: ..."`. Both frontends already tolerate this as a fallback; it is not something to work around by hand |
 | Node backend fails at startup with a missing-table error | The database was never migrated. Start Spring Boot once first — Node cannot apply its own schema |
 | A session created against one backend doesn't work against the other | Confirm both are pointed at the *same* `DATABASE_URL`/`datasource.url` — this is the most common reason they'd appear to disagree despite the shared-database design |
+| `mvn` (or `mvnw`) is not recognized as a command | Maven isn't on this machine's `PATH`, even though it's installed — a per-machine setup gap, not a project defect. Find the real install (e.g. `where.exe mvn` won't find it either; search common install roots) and either add its `bin` directory to `PATH` for the session or reference it by full path. See `hotelapp-server-springboot`'s own Copilot instructions for how this was actually resolved on the machine this project was built on |
+| Spring Boot fails to start or build with an "unsupported class file version" / release-version error | `JAVA_HOME` points at a newer JDK than `pom.xml`'s `<java.version>` pins. Set `JAVA_HOME` to a JDK matching that pin for the session before running `mvn` — don't assume the system default JDK is the right one |

@@ -42,6 +42,7 @@ Those three are the project. Everything else elaborates them.
 | [acceptance-criteria.md](./shared/acceptance-criteria.md) | Writing tests | 40+ Given/When/Then criteria: no-overbooking, cancellation boundary, authorization, sessions. **Required in both backend repos** |
 | [versioning-strategy.md](./shared/versioning-strategy.md) | Changing the API or the schema | Breaking-change definition, why no `/v2` exists, **migration ownership: Flyway executes, Prisma introspects** |
 | [devops-pipeline-overview.md](./shared/devops-pipeline-overview.md) | Setting up CI | Per-repo jobs, the OpenAPI diff, the Compose smoke test |
+| [local-integration-guide.md](./shared/local-integration-guide.md) | Running a frontend against a backend by hand, or switching which backend it talks to | The frontend×backend matrix, verified startup commands, and the switch procedure. A runbook, not a decision — cross-references each stack's own `environment-setup-guide.md` rather than repeating it |
 | [phased-implementation-plan.md](./shared/phased-implementation-plan.md) | Asking "what's next" | Build order, per-phase definition of done, open items |
 | [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | *Reversed* decisions only — three entries: dropped free-tier hosting, JWT→sessions, migration ownership |
 

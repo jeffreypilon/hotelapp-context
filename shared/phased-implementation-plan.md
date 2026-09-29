@@ -1340,6 +1340,102 @@ coding-standards.md's "a second copy of any shared rule" prohibition.
 
 No contract or migration mismatch was found this step.
 
+#### Node Step 7 (DEBUG-level redacted request/response body logging) — instructions for Copilot
+
+**Scope.** Not a new endpoint — a cross-cutting logging addition, matching the Spring Boot stack's
+`BodyLoggingFilter` (`hotelapp-server-springboot@2803232`, 2026-09-28): a `debug`-level-only
+companion to the existing per-request log line that logs each request's and response's body,
+redacted, so a developer running with `LOG_LEVEL=DEBUG` can see full request/response content
+during local development or a live demo. Off by default (`LOG_LEVEL=info`); costs nothing in that
+mode.
+
+**Read first.**
+[Redaction — the hard rule](../stacks/nodejs/logging-observability.md#redaction--the-hard-rule) in
+full, **including its `bodyLoggingMiddleware` paragraph naming this exact step** — this section
+already specifies the design, this is not a fresh design problem;
+[Logging and data handling](./security-principles.md#logging-and-data-handling) (the
+project-wide "redacted body logging, not a blanket ban" design decision this step implements);
+[Payment data](../stacks/nodejs/security-implementation.md#payment-data);
+[Middleware order](../stacks/nodejs/architecture-specification.md#middleware-order).
+
+**Match Spring Boot — do not re-derive the policy, but expect the mechanism to differ.** The
+*policy* is identical and already proven: redact the same field set, gate the whole thing behind
+`debug`, never let body content reach a log line through any other path. What Spring Boot needed
+that Node likely does not: `ContentCachingRequestWrapper`/`ContentCachingResponseWrapper` exist in
+Spring Boot because a Java `HttpServletRequest`'s input stream can only be read once, so the body
+had to be cached to be read a second time for logging. **Express does not have this problem for the
+request side** — `express.json()` (already first in the middleware chain, per
+[Middleware order](../stacks/nodejs/architecture-specification.md#middleware-order)) parses the
+body into `req.body` as a plain object before any later middleware runs, so `bodyLoggingMiddleware`
+registered after it can read `req.body` directly, no wrapper class and no content-cache-limit
+configuration needed. **The response side does still need an interception mechanism** — Express
+has no response-body-caching wrapper built in, so capture what a handler sends by wrapping
+`res.json` (reassign it to a function that captures the argument, then calls the original) before
+calling `next()`, not by trying to read `res` after the fact.
+
+**Node/Express-specific concerns.**
+
+- **A real, confirmed gap in the existing redaction list, found by checking the actual field
+  names, not assumed**: `src/lib/logger.ts`'s current `redact.paths` array has `'*.password'`,
+  `'*.cardNumber'`, `'*.cvv'`, `'*.expiry'`, `'*.expiryMonth'`, `'*.expiryYear'` — but **not**
+  `'*.currentPassword'` or `'*.newPassword'`, even though
+  [Redaction — the hard rule](../stacks/nodejs/logging-observability.md#redaction--the-hard-rule)'s
+  own code sample explicitly lists both, and `PUT /me/password`'s real request body (confirmed in
+  `src/routes/account.schema.ts`) uses exactly those two field names. Fix `logger.ts`'s paths list
+  to match the spec's sample exactly as part of this step — this is not solely a
+  `bodyLoggingMiddleware`-only concern, since any accidental structured log of that endpoint's body
+  today would leak both fields in the clear.
+- Build `bodyLoggingMiddleware` as its own module (e.g. `middleware/bodyLogging.ts`), guarded by a
+  `logger.isLevelEnabled('debug')` check so it does no redaction work at all at the `info` default
+  — matching `BodyLoggingFilter`'s `log.isDebugEnabled()` guard and its "costs nothing when off"
+  property.
+- Reuse the base logger's existing `redact` configuration rather than hand-writing a second
+  field list — call `logger`'s redaction over the captured request/response objects the same way
+  a normal structured `logger.debug({ requestBody, responseBody }, ...)` call would, so the two
+  redaction lists (the general one and this one) cannot independently drift out of sync the way
+  Spring's two `REDACT` sets were deliberately kept as one shared constant.
+- A non-JSON or empty body must be reported as a literal placeholder (e.g. `'<empty>'` /
+  `'<non-JSON body>'`), **never as raw bytes** — falling back to raw content on a parse failure
+  defeats the entire point, the same rule `BodyLoggingFilter` followed.
+- **`POST /reservations` is the one route this step cannot get wrong** — its request body is the
+  payment payload. Write the dedicated test for this route specifically, not just a generic case
+  (see Tests required below).
+- Register `bodyLoggingMiddleware` after `requestContext` (needs `req.context.traceId`) and after
+  `express.json()` (needs `req.body` already parsed) — before or after `requestLogger` in
+  [Middleware order](../stacks/nodejs/architecture-specification.md#middleware-order) does not
+  matter functionally, since the two log independently, but keep them adjacent for readability.
+- `err` objects still go through pino's standard serializer per
+  [Redaction — the hard rule](../stacks/nodejs/logging-observability.md#redaction--the-hard-rule)'s
+  last paragraph — this step does not change that rule, only adds the body-logging path alongside
+  it.
+
+**Tests required.** A unit test suite for the redaction/formatting logic itself, independent of a
+running server, mirroring `BodyLoggingFilterTest`'s six cases: a top-level sensitive field, a
+nested sensitive field (`payment.cardNumber`), an array containing a sensitive field, a
+non-sensitive field left untouched, an empty body, and a non-JSON body. An integration test that
+starts the app with `LOG_LEVEL=debug`, makes a real `POST /reservations` request with valid
+payment data, captures the actual log output, and asserts `cardNumber`/`cvv`/`expiryMonth`/
+`expiryYear` each appear only as the censor value, never as the real submitted values — the same
+grep-the-real-log-output discipline Spring Boot's verification used, not an assertion against a
+mocked logger. A `PUT /me/password` equivalent covering `currentPassword`/`newPassword`. Confirm
+the existing 104 tests still pass unmodified at the `info` default, proving the disabled fast path
+changes nothing about current behavior.
+
+**Done when.** `npm run test:run` passes at the `info` default with no change to the existing 104
+tests; a manual run with `LOG_LEVEL=debug` against a real `POST /reservations` and a real
+`PUT /me/password` shows full request/response bodies in the terminal with every sensitive field
+replaced by the censor value, verified by reading the actual terminal output, not assumed from the
+code; `logger.ts`'s redact-paths gap above is fixed; the stale `// Never log request/response
+bodies...` comment at the top of `logger.ts` is corrected to describe the actual policy (redacted,
+not banned), since it currently contradicts this step's own feature.
+
+#### What Node Step 7 actually taught us
+
+*(Copilot: replace this placeholder with the real outcome once the step is done, matching the
+"What Node Step N actually taught us" sections above — what shipped, the real test count read from
+raw output, any judgment call made, any contract or spec gap found. Do not leave this placeholder
+in place after the step is complete.)*
+
 ---
 
 > **Design Decision — interleaving Phase 6 and Phase 7 rather than finishing each fully in

@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-3 (foundation, property detail/room types, and search/results, S1-S3) are now done too, against live Node. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
+| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-4 (foundation, property detail/room types, search/results, and auth/route guards, S1-S3 + S5) are now done too, against live Node (Step 4 also cross-verified against live Spring Boot for AC-SE-05). **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -2397,6 +2397,71 @@ note, the same manual proof Node's own Step 1 recorded.
 **Done when.** `npm run ci` passes, the guard test suite passes, and side by side with React's
 `:5173` (standing rule 6) the login and registration forms, the password-field show/hide toggle, and
 the form-level vs. field-level error placement all read as the same product.
+
+### Angular Step 4 (auth: login, registration, route guards) — done 2026-09-29
+
+`hotelapp-client-angular`. Built S5 in full (login, registration, shared `AuthLayout`/
+`PasswordField`) and all three route guards (`authGuard` wired to nothing yet since no protected
+route exists; `staffGuard`/`managerGuard` built and unit-tested, unwired, same "built, tested,
+unwired" pattern as React's own Step 4). Typed Reactive Forms (`FormGroup`/`FormControl`), not
+Signal Forms — no reactive-forms pattern was established yet in this codebase, and
+error-handling.md's own code sample for server field-error application (`this.form.get(fe.field)?.
+setErrors(...)`) is written against classic reactive forms, so that's the one this step follows
+rather than re-deriving signal-forms' different error-reporting shape. A live phone-number mask
+routes through the `FormControl`'s own `valueChanges` (not a second native `(input)` listener
+alongside `formControlName`'s own) to avoid a write-order race between two listeners on one native
+event under zoneless change detection. `shared/util/errors/messages.ts` is the one place an
+`ApiError` becomes user-facing text, per error-handling.md's exact module location and shape
+(`ERROR_MESSAGES`, `fieldMessage`, `resolveError`) — the first time this client has needed it past
+inline `NOT_FOUND` checks, so it's written to serve every future screen that needs it, not just S5.
+
+**Verified by execution**: `npm run ci` green (80 tests, 8 new files: `messages.spec.ts`,
+`phone.spec.ts`'s new `isCompletePhoneNumber` coverage, three guard spec files, `login-screen.spec.ts`,
+`register-screen.spec.ts`). Initial bundle 81.69 KB gzip, still under budget. `grep -rniE
+"bearer|jwt|accessToken|refreshToken|auth/refresh" src/` returns nothing.
+
+**Manually verified against a live `hotelapp-server-nodejs` and, for the cross-backend check,
+`hotelapp-server-springboot` too**: registered a fresh guest (phone masked live as typed,
+`"2035550100"` → `"(203) 555-0100"`), redirected to `/` and the header showed the logged-in
+session; logged out; `INVALID_CREDENTIALS` rendered as the exact form-level message with the form
+values retained, never attached to a field; re-logging in with the correct password succeeded and
+redirected by role; `EMAIL_ALREADY_REGISTERED` attached to the `email` control with the "Log in
+instead" link. **AC-SE-05 walkthrough** (this step's own required manual proof): registered a
+guest against Node, then edited `public/config.js`'s `apiBaseUrl` to point at Spring Boot on
+`:8080` and reloaded with no fresh login — the header still showed the same logged-in guest,
+confirming the session cookie is honored interchangeably by both backends, matching Node's own
+Step 1 outcome note. Reverted `config.js` afterward.
+
+**A real contract-vs-implementation defect was found and disclosed, not silently worked around.**
+`hotelapp-server-nodejs`'s `POST /auth/register` schema (`auth.schema.ts`) has `phone:
+z.string().max(32).optional()` — missing `.nullable()`, unlike `PATCH /me`'s own phone field in
+`account.schema.ts`, which correctly has both. Sending `{"phone": null}` (this client's original,
+React-mirroring approach for "the guest left this optional field blank") is rejected with `400
+VALIDATION_FAILED` / `{field: "phone", code: "REQUIRED", message: "Expected string, received
+null"}`, confirmed live by curl; omitting the key entirely succeeds. **Fixed client-side, not in
+the Node repo**, per "stay in this stack": `RegisterRequest.phone` is now `phone?: string`, and
+`RegisterScreen` omits the key entirely rather than sending `null` when the field is blank. Flagged
+for a `hotelapp-server-nodejs` fix (add `.nullable()` to match `account.schema.ts`) and a matching
+check in `hotelapp-client-react`, which sends the same `phone: values.phone || null` shape and
+likely has the identical latent gap, apparently never manually verified against Node for this
+specific case (its own Step 4 outcome note only mentions verification, not which backend).
+
+**Judgment calls, disclosed per standing rule 5.** `staffGuard`/`managerGuard`'s redirect target for
+an authenticated-but-insufficient-rank user is `/` (home) rather than React's `RequireStaff`
+redirecting to `/` and `RequireManager` redirecting to `/admin` — this repo has no `/admin` route
+tree yet at all (Node's admin/reporting phase is still deferred), so React's "nested under
+`RequireStaff`, redirect to the parent" target doesn't exist here yet; `managerGuard` re-checks
+authentication and the staff-rank floor itself rather than assuming a `staffGuard` ran first,
+since no route nests them together yet. Revisit both guards' redirect targets once the admin route
+tree is actually built. The `RATE_LIMITED` `Retry-After` header-format comment was rewritten to
+state what's actually verified (delta-seconds observed from both backends so far, format not
+specified by the contract) rather than React's own overstated "always... never" phrasing, per this
+step's own instruction to fix that comment here rather than copy it.
+
+No other contract or shared-spec defect was found this step — `POST /auth/login`'s response shape,
+`INVALID_CREDENTIALS`'s identical-timing/identical-message behavior for unknown-email vs.
+wrong-password, and the session cookie's cross-backend interchangeability all behaved exactly as
+documented.
 
 #### Angular Step 5 (booking flow: summary, payment, confirmation) — instructions for Copilot
 

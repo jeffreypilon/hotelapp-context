@@ -7,16 +7,14 @@ that do. Where it repeats a command from a stack's own `environment-setup-guide.
 document remains authoritative; this one exists because running the *whole* matrix (which
 frontend, against which backend) is a cross-cutting concern none of the four repos owns alone.
 
-> **Status.** Covers `hotelapp-client-react` and `hotelapp-client-angular` against both backends.
-> React verified by actually running it. Angular's guest-facing build finished 2026-09-29
-> (`hotelapp-client-angular@a8c59f4`); its Step 1 and Step 4 outcome notes in
-> `phased-implementation-plan.md` record actually running it against a live backend, including the
-> cross-backend `public/config.js`-switch walkthrough this document's "Pointing Angular at a
-> backend" section describes below. **One gap not smoothed over here**: outcome notes exist for
-> Angular Steps 1–5 but not 6–7, even though both are committed — the live click-through those
-> steps' own "Done when" bar calls for may or may not have actually happened. Treat S8b/S8c/S8a/S8d
-> (reservation history, modify, cancel, profile, password) as less thoroughly confirmed than the
-> earlier screens until that outcome-note gap is closed.
+> **Status.** Covers `hotelapp-client-react` and `hotelapp-client-angular` against both backends,
+> both verified by actually running them. Angular's entire guest-facing scope (items 1-6) finished
+> 2026-09-29 (`hotelapp-client-angular@a8c59f4`), with an outcome note for all seven steps in
+> `phased-implementation-plan.md` — Steps 6 and 7's notes landed after this guide's first Angular
+> pass was drafted and were folded in immediately once found, rather than left stale. Every step's
+> outcome records a live click-through against a running backend, including Step 4's cross-backend
+> `public/config.js`-switch walkthrough this document's "Pointing Angular at a backend" section
+> describes below.
 
 ---
 
@@ -25,7 +23,7 @@ frontend, against which backend) is a cross-cutting concern none of the four rep
 |                | Spring Boot (`:8080`) | Node.js (`:3000`) |
 |----------------|-----------------------|--------------------|
 | **React** (`:5173`)   | ✅ works, verified | ✅ works, verified |
-| **Angular** (`:4200`) | ✅ works, verified (session portability confirmed live, Step 4) | ✅ works, verified |
+| **Angular** (`:4200`) | ✅ works, verified (session portability confirmed live, Step 4) | ✅ works, verified (all 7 steps click-through-tested live) |
 
 Both backends share **one** PostgreSQL database (`hotelapp`) —
 [versioning-strategy.md](./versioning-strategy.md) is the reason only Spring Boot may migrate it.

@@ -7,9 +7,16 @@ that do. Where it repeats a command from a stack's own `environment-setup-guide.
 document remains authoritative; this one exists because running the *whole* matrix (which
 frontend, against which backend) is a cross-cutting concern none of the four repos owns alone.
 
-> **Status.** Covers `hotelapp-client-react` against both backends, verified by actually running
-> it. `hotelapp-client-angular` section is a placeholder — fill it in once that frontend exists,
-> alongside its own `stacks/angular/environment-setup-guide.md`.
+> **Status.** Covers `hotelapp-client-react` and `hotelapp-client-angular` against both backends.
+> React verified by actually running it. Angular's guest-facing build finished 2026-09-29
+> (`hotelapp-client-angular@a8c59f4`); its Step 1 and Step 4 outcome notes in
+> `phased-implementation-plan.md` record actually running it against a live backend, including the
+> cross-backend `public/config.js`-switch walkthrough this document's "Pointing Angular at a
+> backend" section describes below. **One gap not smoothed over here**: outcome notes exist for
+> Angular Steps 1–5 but not 6–7, even though both are committed — the live click-through those
+> steps' own "Done when" bar calls for may or may not have actually happened. Treat S8b/S8c/S8a/S8d
+> (reservation history, modify, cancel, profile, password) as less thoroughly confirmed than the
+> earlier screens until that outcome-note gap is closed.
 
 ---
 
@@ -18,7 +25,7 @@ frontend, against which backend) is a cross-cutting concern none of the four rep
 |                | Spring Boot (`:8080`) | Node.js (`:3000`) |
 |----------------|-----------------------|--------------------|
 | **React** (`:5173`)   | ✅ works, verified | ✅ works, verified |
-| **Angular** (`:4200`) | ⬜ not yet built | ⬜ not yet built |
+| **Angular** (`:4200`) | ✅ works, verified (session portability confirmed live, Step 4) | ✅ works, verified |
 
 Both backends share **one** PostgreSQL database (`hotelapp`) —
 [versioning-strategy.md](./versioning-strategy.md) is the reason only Spring Boot may migrate it.
@@ -122,19 +129,58 @@ file.
 
 ## Pointing Angular at a backend
 
-Not yet applicable — `hotelapp-client-angular` has no code yet. Expect the same shape as React's
-(a build-time config value naming the backend's base URL, switched by editing a local env file
-and restarting `ng serve`), confirmed against
-[stacks/angular/environment-setup-guide.md](../stacks/angular/environment-setup-guide.md) once
-that repo exists.
+Angular's mechanism is a genuine improvement on React's, not just a different flavor of the same
+thing: the backend URL is read from `window.__HOTELAPP_CONFIG__.apiBaseUrl` at runtime, set by
+`public/config.js` and loaded via a `<script>` tag in `index.html` **before** the app bootstraps —
+see [stacks/angular/architecture-specification.md](../stacks/angular/architecture-specification.md#configuration)
+for the full mechanism. `public/config.js` is a static asset, served as-is by both `ng serve` and a
+built bundle, so switching backends needs **no dev-server restart and no rebuild** — edit the file
+and reload the browser tab. Start the dev server first, from inside `hotelapp-client-angular`:
+
+```powershell
+npm start
+```
+
+Confirm it is up (Angular CLI's default dev-server port, `4200`, is not overridden anywhere in this
+repo):
+
+```powershell
+curl http://localhost:4200/
+```
+
+Then edit `public/config.js`:
+
+```js
+window.__HOTELAPP_CONFIG__ = { apiBaseUrl: 'http://localhost:8080/api/v1' };   // Spring Boot
+// or
+window.__HOTELAPP_CONFIG__ = { apiBaseUrl: 'http://localhost:3000/api/v1' };   // Node
+```
+
+Reload the browser tab — that's the whole switch. **Confirmed live, not just designed this way**:
+Angular's own Step 4 outcome note in `phased-implementation-plan.md` records registering a guest
+against Node, then editing `public/config.js` to point at Spring Boot on `:8080` and reloading with
+no fresh login — the header still showed the same logged-in guest, the same cross-backend session
+portability [AC-SE-05](./acceptance-criteria.md#ac-se-05--a-session-works-interchangeably-against-both-backends)
+proves for React. Both backends' CORS allow-lists already include `http://localhost:4200` by
+default (`hotelapp-server-springboot`'s `application.properties` and
+`hotelapp-server-nodejs`'s `CORS_ALLOWED_ORIGINS` default both list it alongside `:5173`) — checked
+directly in each repo's source, not assumed from the port number alone.
+
+If `public/config.js` is ever missing or emptied, Angular falls back to the compiled
+`src/environments/environment.development.ts` value in a dev build (a genuinely missing config
+throws, rather than silently calling nowhere) — but that file needs a dev-server restart to take
+effect, the same restart React's `.env.local` needs. **`public/config.js` is the file to edit for a
+quick backend switch; `environment.development.ts` is only the fallback default.**
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
 | Browser console shows an opaque CORS/network error on every request, not just `401`s | A stray process is already listening on 5173 (or 4200), Vite/Angular CLI silently bumped to the next port, and neither backend's CORS allow-list includes it. Check `Get-NetTCPConnection -LocalPort 5173 -State Listen` and kill the stray process |
-| `GET /auth/me` specifically fails as an opaque CORS/network error, but other endpoints work | The known, currently-unfixed Spring Boot defect: its `401`/`403` responses raised before Spring MVC's dispatcher (e.g. an anonymous `GET /auth/me`) are missing CORS headers. Confirmed via `curl -H "Origin: ..."`. Both frontends already tolerate this as a fallback; it is not something to work around by hand |
+| `GET /auth/me` specifically fails as an opaque CORS/network error, but other endpoints work | **This was a real Spring Boot defect (401/403 responses raised before Spring MVC's dispatcher were missing CORS headers), fixed 2026-09-28 (`hotelapp-server-springboot@3a3f864`) — this row is now stale as a live symptom, kept only as a historical note.** If it recurs, the fix has three parts that must all be present: `WebConfig`'s `CorsConfigurationSource` bean, `SecurityConfig` wiring it into `.cors(...)` rather than a no-op, and `ProblemResponseWriter` **not** calling `response.reset()` before writing the error body (that call silently wipes the CORS headers the first two parts just added). Confirmed by reading all three files directly -- Spring Boot wasn't running this session to `curl` it live -- not assumed fixed from the commit message alone |
 | Node backend fails at startup with a missing-table error | The database was never migrated. Start Spring Boot once first — Node cannot apply its own schema |
 | A session created against one backend doesn't work against the other | Confirm both are pointed at the *same* `DATABASE_URL`/`datasource.url` — this is the most common reason they'd appear to disagree despite the shared-database design |
 | `mvn` (or `mvnw`) is not recognized as a command | Maven isn't on this machine's `PATH`, even though it's installed — a per-machine setup gap, not a project defect. Find the real install (e.g. `where.exe mvn` won't find it either; search common install roots) and either add its `bin` directory to `PATH` for the session or reference it by full path. See `hotelapp-server-springboot`'s own Copilot instructions for how this was actually resolved on the machine this project was built on |
 | Spring Boot fails to start or build with an "unsupported class file version" / release-version error | `JAVA_HOME` points at a newer JDK than `pom.xml`'s `<java.version>` pins. Set `JAVA_HOME` to a JDK matching that pin for the session before running `mvn` — don't assume the system default JDK is the right one |
+| Edited `public/config.js` in `hotelapp-client-angular` but the app still calls the old backend | Either the browser tab wasn't reloaded (no dev-server restart is needed, but a reload is), or `src/environments/environment.development.ts` was edited instead — that file is only the fallback used when `public/config.js` is missing/empty, and it *does* need a dev-server restart to take effect, the same restart React's `.env.local` needs. `public/config.js` is the one to edit for a quick switch |
+| Angular's `ng serve` fails to start because port `4200` is already in use | A previous `ng serve` (or another Angular project) is still holding the port. `Get-NetTCPConnection -LocalPort 4200 -State Listen` to find it, same check as the stray-Vite-process symptom above |

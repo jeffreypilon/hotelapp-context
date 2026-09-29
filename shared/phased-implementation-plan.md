@@ -21,7 +21,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 3 | `stacks/react/` + `stacks/angular/` | ✅ Done — 24 documents |
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
-| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
+| 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done; Spring Boot's guest-facing slice (items 1-8) complete, Spring Boot only. Node has not been started, but detailed step-by-step build instructions for Copilot now exist below, mirroring Spring Boot's 7 steps. Admin/reporting/cross-cutting (items 9-12) deferred — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
@@ -582,6 +582,482 @@ the first time here, closing that gap.
 [api-contracts.md](./api-contracts.md); both backends pass every criterion in
 [acceptance-criteria.md](./acceptance-criteria.md); the OpenAPI diff is clean; CI is green in
 both repos; both serve identical responses to the same requests against the same database.
+
+---
+
+### Node implementation steps — detailed instructions for Copilot
+
+Prospective, sequenced build instructions for `hotelapp-server-nodejs`, mirroring Spring Boot's
+already-completed Steps 0–6 above one for one: walking skeleton, sessions, public catalogue,
+availability search, booking, reservation management, profile/password — Spring Boot's
+guest-facing slice, items 1-8 minus the admin items.
+
+**Unlike every Step section above, which is a retrospective outcome report written after the work
+landed, the steps below are written prospectively.** They are instructions for a Copilot agent to
+read and act on directly, one step at a time, with Jeff saying only "do Node Step N" — not a
+chat-relayed prompt written fresh each time. A cold Copilot session given nothing but that
+instruction should be able to find everything it needs from this section plus the documents it
+points into. This is a deliberate trial of that approach for the Node build specifically
+(2026-09-29); whether it becomes the standing way of working with Copilot on this project,
+including for Angular later, is a separate decision not made here.
+
+> **Standing rules for every step below**, stated once rather than seven times:
+>
+> 1. **Commit and push at the end of the step, regardless of what the step's own text says.**
+>    Both `hotelapp-client-react`'s and `hotelapp-server-springboot`'s Copilot instructions had
+>    this added mid-project, after two steps each landed fully verified but uncommitted (see the
+>    Phase 7 Step 1/2 outcomes above). `hotelapp-server-nodejs`'s own Copilot instructions do
+>    **not** yet carry an equivalent rule as of this writing — do not assume it is implied.
+> 2. **Any new pure function in `domain/` with non-obvious logic ships with its own test in the
+>    same commit.** React's Copilot instructions picked up this rule after the gap recurred three
+>    steps running (Phase 7 Steps 3 and 5 above). Do not defer a `pricing.ts` / `cancellation.ts`
+>    / `allocation.ts` / `status.ts` test to "later."
+> 3. **Verify completion by actually running `npm run test:run` and reading the raw output** —
+>    never report a step done from a self-summary. Check `git status` and `git log` before
+>    claiming anything is committed; an agent-reported "done" that was still uncommitted has
+>    happened often enough in this project to be a named, recurring lesson (see the Phase 6 and
+>    Phase 7 step outcomes above).
+> 4. **Before starting the next step, add a short outcome note back into this document** — a new
+>    subsection under this one, in the same style as Spring Boot's and React's Step outcomes
+>    above: what shipped, the real test count read from raw output, any judgment call made, any
+>    contract defect found. This document has gone stale against real progress before because an
+>    outcome update was skipped in the moment and never caught up (see "Doc-drift found and
+>    fixed" below) — do not let that happen here too.
+> 5. **Every endpoint's happy path gets at least one integration test**, per
+>    [testing-standards.md](../stacks/nodejs/testing-standards.md#4-beyond-the-criteria) — the
+>    acceptance criteria named per step below are the criteria that must be *provably* correct,
+>    not the whole of what needs a test.
+> 6. **A judgment call, an ambiguity, or a contract gap found while building is disclosed, not
+>    silently worked around** — the same discipline Spring Boot's and React's steps followed
+>    throughout. If Node's build finds that `api-contracts.md` itself needs a correction, fix it
+>    there first, the same as every prior contract defect this project has found.
+
+#### Node Step 0 — walking skeleton — instructions for Copilot
+
+**Scope.** No new product endpoints. Project skeleton, database connection, `GET /health`,
+`GET /properties` — proving the Prisma half of Phase 6 Step 0's original goal, which Spring
+Boot already proved for the wire format itself.
+
+**Read first.**
+[architecture-specification.md](../stacks/nodejs/architecture-specification.md#the-migration-asymmetry-and-what-it-means-for-this-repo)
+and its [Layering](../stacks/nodejs/architecture-specification.md#layering) and
+[Folder layout](../stacks/nodejs/architecture-specification.md#folder-layout) sections;
+[environment-setup-guide.md](../stacks/nodejs/environment-setup-guide.md) in full — it is written
+to be followed literally and its "read this first: you cannot start here" box is not optional
+context; [coding-standards.md](../stacks/nodejs/coding-standards.md); the "Conventions" table at
+the top of [api-contracts.md](./api-contracts.md#conventions).
+
+**Match Spring Boot — do not re-derive.** The nullable-fields-must-be-`null`-never-omitted rule
+that Step 0's Spring Boot run found the hard way is already fixed in
+[api-contracts.md](./api-contracts.md#conventions) and stated as a Node-specific hazard in
+[architecture-specification.md](../stacks/nodejs/architecture-specification.md#dtos): map every
+DTO field to `?? null`, never `?? undefined`, and type nullable fields as `string | null` rather
+than optional so the compiler catches the difference. This is not a fresh risk to investigate —
+it is a known trap with a known fix, already written down.
+
+**Node/Prisma-specific concerns.**
+
+- **A migrated database must already exist before this step can do anything.** This backend
+  cannot create its own schema. Either the Spring Boot backend has been started once against the
+  local `hotelapp` database, or run the Flyway CLI directly per
+  [environment-setup-guide.md](../stacks/nodejs/environment-setup-guide.md#quick-start). Confirm
+  which before writing any code — if neither is true yet, that is this step's actual first
+  blocker, not a coding problem.
+- `npx prisma db pull` against that database, then `npx prisma generate`. Expect `stay_period` to
+  introspect as `Unsupported("daterange")` — that is correct, not a bug to fix, per
+  [architecture-specification.md](../stacks/nodejs/architecture-specification.md#prisma-usage).
+- `GET /properties` must map every field through an explicit DTO, never a raw Prisma result — see
+  [DTOs](../stacks/nodejs/architecture-specification.md#dtos). This is the one endpoint where the
+  nullable-field trap above is real: `photoUrl` and `address.line2` are both nullable.
+- No money or date field is exercised by `GET /properties` (it carries `roomTypeCount`, not
+  pricing, and no date field) — same carve-out Spring Boot's own Step 0 had. Do not claim money or
+  date serialization is validated from this step; that is Step 2's and Step 3's job respectively.
+
+**Tests required.** A `PropertyControllerIT`-equivalent integration test (real PostgreSQL, per
+[testing-standards.md](../stacks/nodejs/testing-standards.md#1-the-layers-and-what-each-one-is-for)
+— no substitute database) asserting `GET /health` and `GET /properties` both respond correctly
+against the live schema. This step predates the acceptance-criteria matrix; no AC-ID is owed yet.
+
+**Done when.** `npm run dev` starts against the already-migrated database, `curl
+localhost:3000/api/v1/health` returns `{"status":"UP","database":"UP",...,"backend":"nodejs"}` per
+[environment-setup-guide.md](../stacks/nodejs/environment-setup-guide.md#quick-start), and
+`GET /properties` returns the same seeded properties Spring Boot already serves, byte-comparable
+field by field (same nullable-vs-omitted behavior, same field names). Point
+`hotelapp-client-react`'s configured backend URL at Node's `:3000` and confirm the existing
+property list screen (Phase 7 Step 1's `S1`) renders correctly with no frontend code change —
+the concrete proof of "either frontend against either backend" for the first time in this project.
+
+#### Node Step 1 (sessions) — instructions for Copilot
+
+**Scope.** `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, per
+[api-contracts.md](./api-contracts.md#authentication-endpoints).
+
+**Read first.**
+[api-contracts.md](./api-contracts.md#authentication) (the session design in full) and
+[api-contracts.md](./api-contracts.md#authentication-endpoints) (the four endpoints' exact
+shapes); [architecture-specification.md](../stacks/nodejs/architecture-specification.md#session-handling)
+(the six-step middleware sequence, normative); every mention of sessions in
+[security-implementation.md](../stacks/nodejs/security-implementation.md); the `decision-log.md`
+entry on the JWT-to-sessions reversal (entry 2) so no part of the removed design is reintroduced.
+
+**Match Spring Boot — do not re-derive.** Nothing to match from a judgment call — Spring Boot's
+Step 1 found no contract defect and made no flagged judgment call. Match its *behavior* exactly:
+the same 8-hour sliding idle window with a 5-minute write-throttle and a 30-day absolute cap (the
+values themselves are fixed in
+[data-model.md](./data-model.md#sessions), and Node's `.env.example` already carries them per
+[environment-setup-guide.md](../stacks/nodejs/environment-setup-guide.md) — do not change them);
+the same `INVALID_CREDENTIALS` response for both an unknown email and a wrong password, with
+comparable timing on both paths.
+
+**Node/Prisma-specific concerns.**
+
+- Token generation is `crypto.randomBytes(32)`, never `Math.random()`; hash comparison is a
+  database lookup on `token_hash`, so `crypto.timingSafeEqual` is not needed there — full detail
+  in [security-implementation.md](../stacks/nodejs/security-implementation.md#sessions).
+- `middleware/session.ts` must read `role` and `is_active` from the **joined** user row on every
+  request, not a cached value — this is what makes deactivation take effect immediately, per
+  [architecture-specification.md](../stacks/nodejs/architecture-specification.md#session-handling).
+- Timing equality on login: verify against a dummy bcrypt hash of the same cost when no user is
+  found, or the unknown-email path returns fast enough to be a usable account oracle — see
+  [error-handling.md](../stacks/nodejs/error-handling.md#timing-equality-on-login) and
+  [security-implementation.md](../stacks/nodejs/security-implementation.md#passwords).
+- `bcrypt` cost from `BCRYPT_COST`, defaulting to 12 — must cross-verify with Spring Security's
+  `BCryptPasswordEncoder`-produced hashes; this is directly testable once both backends exist.
+- Rate limiting on `/auth/login` and `/auth/register`: 10 attempts / 15 minutes, keyed on IP *and*
+  email, whichever trips first, per
+  [security-implementation.md](../stacks/nodejs/security-implementation.md#rate-limiting).
+- Grep the finished code: `grep -rniE "bearer|jwt|refreshToken|auth/refresh" src/` must return
+  nothing, per
+  [security-implementation.md](../stacks/nodejs/security-implementation.md#what-must-never-appear-in-this-codebase).
+
+**Tests required.** AC-SE-01, 02, 03, 04, 06, 08, 09, 10, and AC-AZ-11 — the same set Spring
+Boot's Step 1 covered. **This is the step where
+[AC-SE-05](./acceptance-criteria.md#ac-se-05--a-session-works-interchangeably-against-both-backends)
+first becomes real rather than theoretical**: once this step lands, run the manual cross-backend
+walkthrough in
+[environment-setup-guide.md](../stacks/nodejs/environment-setup-guide.md#working-against-the-other-frontend-or-alongside-the-other-backend)
+by hand — log in against Node, call `/auth/me` against Spring Boot with the same cookie, log out
+from Spring Boot, confirm Node now returns `401` too — and record the result in this step's
+outcome note. The formal automated version still belongs to the Phase 8 Compose smoke test, but
+the single-process approximation (seed a `sessions` row directly via SQL, then assert this backend
+honors it) is this repo's own required test, per
+[testing-standards.md](../stacks/nodejs/testing-standards.md#sessions).
+
+**Done when.** `npm run test:run` passes with 0 failures covering the criteria above, the manual
+cross-backend walkthrough succeeds by hand at least once, and `hotelapp-server-nodejs`'s own
+Copilot instructions are updated with the endpoint status and current test count (its "Build,
+test, and lint — NOT YET ESTABLISHED" section is stale the moment real commands exist to put
+there).
+
+#### Node Step 2 (public catalogue) — instructions for Copilot
+
+**Scope.** `GET /properties` (with `sort`, `city`, `q` — Step 0 built a minimal version; this step
+completes it), `GET /properties/{propertyId}`, `GET /properties/{propertyId}/room-types`,
+`GET /room-types/{roomTypeId}`, `GET /amenities`, `GET /rate-categories`, per
+[api-contracts.md](./api-contracts.md#public-catalogue-endpoints).
+
+**Read first.** The full "Public catalogue endpoints" section of
+[api-contracts.md](./api-contracts.md#public-catalogue-endpoints), including every response
+example; [Pagination, sorting, filtering](./api-contracts.md#pagination-sorting-filtering);
+[Query rules](../stacks/nodejs/architecture-specification.md#query-rules) (the `select`-only,
+`include`-not-N+1 rules).
+
+**Match Spring Boot — do not re-derive.** `api-contracts.md` names a "summary form" for the
+`roomTypes` array embedded in `GET /properties/{propertyId}` without an example. Spring Boot's
+Step 2 interpreted this as the flat room-type fields with no `amenities`/`photos` collections, and
+React's Phase 7 Step 2 later confirmed this by curling the live Spring Boot backend directly (see
+that outcome above) — so this is no longer an open judgment call for Node to re-derive, it is a
+confirmed shape to match exactly. Type it narrowly (e.g. a `PropertyRoomTypeSummary` DTO distinct
+from the full room-type DTO used elsewhere), not richer.
+
+**Node/Prisma-specific concerns.**
+
+- **This is where the money half of Step 0's carry-forward requirement gets closed.** Assert
+  `baseRate` directly against the raw JSON response body as the string `"249.00"`, with an
+  explicit assertion that it is never the bare number `249` — the same check Spring Boot's Step 2
+  ran. Do not trust a parsed-object comparison; parse the raw response text.
+- `select` explicitly on every query — no bare `findMany` — per
+  [Query rules](../stacks/nodejs/architecture-specification.md#query-rules) and
+  [security-implementation.md](../stacks/nodejs/security-implementation.md#injection): a bare
+  query on `properties` or `room_types` would pull no sensitive columns here, but the habit is
+  what protects the `users` and `sessions` queries elsewhere, and inconsistency invites a mistake
+  later.
+- Out-of-range pagination (`pageSize=101`, `page=0`) must be `400 VALIDATION_FAILED`, never
+  silently clamped — [AC-CC-03](./acceptance-criteria.md#ac-cc-03--pagination-is-consistent-everywhere).
+  Zod's `.strict()` numeric bounds on the query schema are the mechanism.
+- `GET /properties/{propertyId}` and `GET /room-types/{roomTypeId}` accept either a UUID or a
+  slug in the path segment per the contract — do not assume UUID-only.
+- Public room-type responses must never include `roomCount` or room numbers — confirm the DTO for
+  this endpoint is genuinely distinct from the admin-facing one, not the same type with fields
+  conditionally omitted (conditional omission is exactly the "field present sometimes" hazard this
+  project's nullable-field rule exists to prevent).
+
+**Tests required.** Every endpoint's happy path; the money-as-string assertion above;
+AC-CC-03 (pagination, out-of-range, and the `id`-tiebreak stable sort across two identical
+requests); the public-catalogue half of
+[AC-AZ-10](./acceptance-criteria.md#ac-az-10--public-endpoints-require-nothing-and-leak-nothing)
+(no room numbers or ids anywhere in these responses, no session required).
+
+**Done when.** `npm run test:run` passes; the money-as-string check is a real assertion in the
+test file, not a comment claiming it was checked; `hotelapp-context`'s own note about the
+`RoomTypeSummaryResponse` shape (still phrased as an open judgment call in Spring Boot's Step 2
+outcome above) can be considered doubly confirmed and this step's outcome note should say so.
+
+#### Node Step 3 (availability search) — instructions for Copilot
+
+**Scope.** `GET /availability`, per [Availability search](./api-contracts.md#availability-search).
+
+**Read first.** [Availability search](./api-contracts.md#availability-search) in full, including
+the allocation-rule design decision at its end;
+[data-model.md](./data-model.md#no-overbooking) (the literal anti-join SQL shape this query must
+implement); [Query rules](../stacks/nodejs/architecture-specification.md#query-rules) (the
+`$queryRaw` requirement — Prisma's query builder cannot express the `&&` range operator or the
+`NOT EXISTS` anti-join this query needs);
+[non-functional-requirements.md](./non-functional-requirements.md#response-time-targets) (the
+`EXPLAIN` requirement); [AC-CX-10](./acceptance-criteria.md#ac-cx-10--pricing-arithmetic-and-rounding-order).
+
+**Match Spring Boot — do not re-derive.** Two judgment calls Spring Boot's Step 3 made and
+documented, both to be matched rather than re-decided: a `rateCategory` with no active
+`rate_plans` row for the property is treated as a **0% discount** (same as `NONE`), and the room
+type stays in results rather than being excluded; and pricing rounds the nightly rate to the cent
+**first**, then multiplies by nights — not the reverse. Implement `domain/pricing.ts` to match
+Spring Boot's `Pricing.java` behavior exactly, including the 0%-fallback case, since a reviewer
+comparing the two should find the same rule stated the same way.
+
+**Node/Prisma-specific concerns.**
+
+- The availability query is hand-written SQL via `$queryRaw` with every date, id, and count as a
+  **bound tagged-template parameter** — never string-interpolated — per
+  [Query rules](../stacks/nodejs/architecture-specification.md#query-rules) and
+  [security-implementation.md](../stacks/nodejs/security-implementation.md#injection). This is
+  the single most parameter-dense query in the application and the one place SQL injection could
+  plausibly be introduced.
+- `Prisma.Decimal` throughout the pricing path, never `number` — `Number(decimal)` or
+  `decimal.toNumber()` on a value headed for a response is a review finding per
+  [coding-standards.md](../stacks/nodejs/coding-standards.md).
+- `minNightlyRate`/`maxNightlyRate` filter on the **discounted** rate, applied in application code
+  after pricing is resolved, matching Spring Boot's approach — not pushed into the SQL, since the
+  discount calculation is a domain-layer concern.
+- Sorting (`nightlyRate`, `maxOccupancy`, `name`) and pagination happen in application code given
+  small per-property room-type cardinality, the same choice Spring Boot made — this is a
+  reasonable default to match, not a hard requirement independently re-derived; flag it in the
+  outcome note either way.
+- `domain/pricing.ts` must be pure — no Prisma, no Express — per
+  [architecture-specification.md](../stacks/nodejs/architecture-specification.md#layering), so it
+  is unit-testable exhaustively and directly comparable to `Pricing.java`.
+
+**Tests required.** [AC-CX-10](./acceptance-criteria.md#ac-cx-10--pricing-arithmetic-and-rounding-order)
+as a **unit** test on `domain/pricing.ts` with both the 249.00/10%/3-nights case and a case where
+round-then-multiply and multiply-then-round actually diverge (e.g. base 100.01 at 33.33% over 3
+nights — the contract's own example does not distinguish the orders), plus an integration
+assertion that `nightlyRate`/`totalAmount` are JSON strings, never numbers; AC-OB-06 and AC-OB-08
+(the search-side half of out-of-service exclusion and accurate `availableRoomCount`); a dedicated
+test for the 0%-discount-fallback judgment call (requesting a `rateCategory` with no configured
+plan); an `EXPLAIN` assertion — per
+[non-functional-requirements.md](./non-functional-requirements.md#response-time-targets) — that
+seeds enough synthetic reservations to make a sequential scan measurably worse, then asserts the
+plan uses the GiST index backing `reservations_no_overlap_excl` rather than a sequential scan on
+`reservations`, run against the *exact* query the production path executes.
+
+**Done when.** `npm run test:run` passes including the `EXPLAIN` assertion; `domain/pricing.ts` is
+unit-tested exhaustively per the standing rule above; no contract or migration mismatch is found
+(if one is, it is corrected in `api-contracts.md`/`data-model.md` first, per the standing rules).
+
+#### Node Step 4 (booking: POST /reservations) — instructions for Copilot
+
+**Scope.** `POST /reservations`, per
+[the full endpoint section](./api-contracts.md#post-reservations--guest) — "the central feature,"
+the same phrase Spring Boot's own Step 4 used.
+
+**Read first.** The full `POST /reservations` section of
+[api-contracts.md](./api-contracts.md#post-reservations--guest), including the "no hold, cart, or
+pending state" design decision and the payment-payload note; the SQLSTATE-to-problem mapping table
+and ["The no-overbooking path, precisely"](../stacks/nodejs/error-handling.md#the-no-overbooking-path-precisely)
+in `error-handling.md`, **including its `> The exclusion constraint is the hard case in this
+stack` callout in full** — this is the single most important passage in the Node specification for
+this step;
+[security-implementation.md](../stacks/nodejs/security-implementation.md#payment-data);
+[Transactions](../stacks/nodejs/architecture-specification.md#transactions).
+
+**Match Spring Boot — do not re-derive.** Three judgment calls Spring Boot's Step 4 made and
+documented, all to be matched: the confirmation-number scheme is `HA` plus 8 Crockford base32
+characters from a CSPRNG (kept out of `domain/` deliberately, since it is non-deterministic, not a
+pure function — put it in a small dedicated module, not inline in the service); the
+payment-decline check (a card ending `0000`) runs **before** room allocation, since a card known
+to decline should never hold a room; idempotency is implemented as an **in-process cache only**,
+explicitly not durable across restarts or across backends, and this must be stated as an accepted
+demo-scope limitation in code, not silently presented as complete.
+
+**Node/Prisma-specific concerns — this step carries the project's hardest Node-specific problem.**
+
+- **Prisma has no mapped error code for SQLSTATE `23P01`.** Detection must go through
+  `isExclusionViolation()` matching a raw error code or message text, per
+  [error-handling.md](../stacks/nodejs/error-handling.md#the-no-overbooking-path-precisely)'s
+  worked example — prefer issuing the reservation insert through `$queryRaw` inside the
+  transaction so the driver's error carries a structured code (`code === '23P01'`) rather than a
+  string match against `PrismaClientUnknownRequestError`'s message.
+- **The allocation retry wraps the transaction; it does not live inside it.** A rolled-back
+  transaction cannot be continued — three attempts, lowest `room_number` by natural sort each
+  time, then `409 ROOM_UNAVAILABLE`. The exact retry-loop shape is in
+  [error-handling.md](../stacks/nodejs/error-handling.md#the-no-overbooking-path-precisely)'s code
+  example — follow it structurally.
+- **A mocked Prisma client is prohibited for this test.**
+  [AC-OB-01](./acceptance-criteria.md#ac-ob-01--two-concurrent-bookings-for-the-last-room-exactly-one-wins)
+  must run against real PostgreSQL via Testcontainers or it proves nothing — a unit test with a
+  mocked client would pass while the guarantee was entirely gone, per
+  [testing-standards.md](../stacks/nodejs/testing-standards.md#1-the-layers-and-what-each-one-is-for).
+- The reservation insert and the payment insert happen in **one transaction**, per
+  [Transactions](../stacks/nodejs/architecture-specification.md#transactions) — a payment row
+  must never exist without its reservation.
+- Payment data: only `cardBrand` (derived from leading digits) and `cardLastFour` are ever
+  written, logged, or returned — the PAN, CVV, and expiry are read once to derive those two
+  fields and then discarded, never passed further down the call stack, per
+  [security-implementation.md](../stacks/nodejs/security-implementation.md#payment-data). Request
+  body logging must be disabled on this route specifically, at the logger, not per handler.
+- `Idempotency-Key` header handling: a repeat of the same key within 24 hours returns the original
+  `201` body rather than creating a second reservation.
+
+**Tests required.** The concurrency test for
+[AC-OB-01](./acceptance-criteria.md#ac-ob-01--two-concurrent-bookings-for-the-last-room-exactly-one-wins)
+using `Promise.allSettled`, asserting on the **sorted pair** of outcomes, per
+[testing-standards.md](../stacks/nodejs/testing-standards.md#the-concurrency-test) — never two
+sequential `await`s, which would pass against an implementation with the race still present;
+AC-OB-02 through AC-OB-05 and AC-OB-07 (adjacent stays, every overlap shape, cancel-frees-dates,
+checked-out-does-not-free-dates, deterministic allocation order); the integration half of
+[AC-CX-10](./acceptance-criteria.md#ac-cx-10--pricing-arithmetic-and-rounding-order) (`totalAmount`
+as a JSON string on the created reservation); a `PAYMENT_DECLINED` test using a card ending
+`0000`; an `Idempotency-Key` replay test.
+
+**Done when.** `npm run test:run` passes, including the concurrency test run enough times locally
+to be confident it is not a lucky interleaving (the stronger form described in
+[testing-standards.md](../stacks/nodejs/testing-standards.md#1-the-layers-and-what-each-one-is-for) —
+holding a transaction open with a conflicting insert uncommitted, then asserting the booking
+request blocks and then fails — is worth writing at least once here too); the three judgment
+calls above are documented in code comments, matching Spring Boot's; no mocked Prisma client
+appears anywhere in the exclusion-constraint test path.
+
+#### Node Step 5 (guest reservation management) — instructions for Copilot
+
+**Scope.** `GET /reservations`, `GET /reservations/{reservationId}`,
+`PATCH /reservations/{reservationId}`, `POST /reservations/{reservationId}/cancel`, per
+[Guest reservation endpoints](./api-contracts.md#guest-reservation-endpoints) (the three below
+`POST /reservations`, which Step 4 already built).
+
+**Read first.** The `GET /reservations`, `GET /reservations/{reservationId}`,
+`PATCH /reservations/{reservationId}`, and `POST .../cancel` sections of
+[api-contracts.md](./api-contracts.md#guest-reservation-endpoints) in full;
+[AC-CX-01](./acceptance-criteria.md#ac-cx-01--just-before-the-deadline-refundable) through
+[AC-CX-09](./acceptance-criteria.md#ac-cx-09--illegal-cancellations-are-rejected) — the whole
+cancellation-boundary block — and especially
+[AC-CX-05](./acceptance-criteria.md#ac-cx-05--dst-transition-does-not-shift-the-deadline-arithmetic),
+worked through step by step in the criteria document rather than re-derived by hand;
+[Ownership: 404 versus 403](../stacks/nodejs/error-handling.md#ownership-404-versus-403).
+
+**Match Spring Boot — do not re-derive.** Legal status-transition rules (what `PATCH` and cancel
+may and may not do from each `status`) match Spring Boot's `ReservationStatusRules.java` /
+[AC-CX-09](./acceptance-criteria.md#ac-cx-09--illegal-cancellations-are-rejected) exactly — put
+this in `domain/status.ts`, pure, the fourth of the four planned pure modules. **A specific bug
+Spring Boot's Step 5 found and fixed is worth guarding against here too, even though Node's clock
+design differs in shape**: jumping a test clock to a cancellation-boundary instant silently
+expired the guest's own login session in Spring Boot, because one shared `Clock` bean drove both
+the cancellation arithmetic and session expiry, producing a confusing `401` instead of the
+expected business-logic response. Node's session middleware and `domain/cancellation.ts` both need
+a time source — check explicitly whether a test's injected `TimeSource` reaches both paths
+consistently, and if a test seeds a session *before* moving the clock to a deadline instant (not
+after), the same class of bug cannot recur silently.
+
+**Node/Prisma-specific concerns.**
+
+- **This step closes the date half of Step 0/2's carry-forward requirement.** `checkInDate`/
+  `checkOutDate` must round-trip correctly from a *mutated* (`PATCH`) reservation, not just a
+  freshly created one (Step 4 covers create-only) — assert both as `YYYY-MM-DD` strings that do
+  not shift by a day under either process timezone tested (see below).
+- `domain/cancellation.ts` computes the deadline as `check_in_date AT TIME ZONE tz - 48h` — an
+  exact 48-hour duration, not "midnight two calendar days earlier." Verify
+  [AC-CX-05](./acceptance-criteria.md#ac-cx-05--dst-transition-does-not-shift-the-deadline-arithmetic)'s
+  worked DST example against the IANA zone database, not against hand arithmetic, and run the
+  suite under at least two process timezones (`TZ=UTC` and something non-UTC), per
+  [testing-standards.md](../stacks/nodejs/testing-standards.md#2-test-data-and-isolation).
+- `PATCH` re-runs allocation and re-prices at **current** rates (not the original booking's
+  rates), and may move the reservation to a different room — the response must carry the current
+  `room`.
+- Ownership: a guest reading, patching, or cancelling another guest's reservation gets `404`, not
+  `403` — [AC-AZ-01](./acceptance-criteria.md#ac-az-01--a-guest-cannot-read-another-guests-reservation)
+  and [AC-AZ-03](./acceptance-criteria.md#ac-az-03--a-guest-cannot-cancel-another-guests-reservation).
+  The ownership check must precede any mutation — a handler that cancels first and checks
+  ownership after returns `404` having still cancelled the booking, which
+  [AC-AZ-03](./acceptance-criteria.md#ac-az-03--a-guest-cannot-cancel-another-guests-reservation)
+  specifically asserts against (reservation state unchanged, not just the status code).
+- `GET /reservations` never widens scope via a request parameter — filter on
+  `req.context.user.id` server-side always, per
+  [AC-AZ-02](./acceptance-criteria.md#ac-az-02--a-guests-list-contains-only-their-own-reservations).
+
+**Tests required.** AC-CX-01 through AC-CX-09, all clock-controlled using an injected
+`TimeSource`, exercised through real HTTP; AC-OB-04 (cancel frees the room, now testable through
+real HTTP for the first time since both create and cancel exist); AC-AZ-01, AC-AZ-02, AC-AZ-03.
+
+**Done when.** `npm run test:run` passes including the DST case and the two-process-timezone
+run (`npm run test:tz`); the shared-clock/session-expiry interaction above has been checked, not
+assumed safe; the outcome note explicitly states whether the date-serialization carry-forward
+requirement is now closed for Node (mirroring how Spring Boot's Step 5 outcome above states it).
+
+#### Node Step 6 (guest profile and password change) — instructions for Copilot
+
+**Scope.** `GET /me`, `PATCH /me`, `PUT /me/password`, per
+[Guest account endpoints](./api-contracts.md#guest-account-endpoints) — the last guest-facing
+item. Completing this step closes Node's guest-facing slice (Phase 6 items 1-8), the same
+milestone Spring Boot's Step 6 reached.
+
+**Read first.** The `GET /me`, `PATCH /me`, and `PUT /me/password` sections of
+[api-contracts.md](./api-contracts.md#guest-account-endpoints) in full;
+[AC-AZ-09](./acceptance-criteria.md#ac-az-09--registration-cannot-escalate)'s second half (`PATCH
+/me` specifically); [AC-SE-07](./acceptance-criteria.md#ac-se-07--password-change-revokes-other-sessions-but-not-the-callers).
+
+**Match Spring Boot — do not re-derive.** Two judgment calls to match, not re-decide: `address`,
+when present in a `PATCH /me` body at all, **replaces the whole sub-object** rather than merging
+field-by-field, matching how the contract treats other sub-objects elsewhere (e.g.
+`PUT /admin/.../rate-plans`); and `PATCH /me`'s "omitted is unchanged, explicit `null` clears it"
+semantics is the whole point of this step.
+
+**Node/Prisma-specific concerns.**
+
+- **The omitted-vs-null distinction is easier to express in Node than it was in Spring Boot, not
+  harder — do not import Spring's `JsonNode`-binding workaround.** A plain parsed JSON object in
+  JavaScript already distinguishes "key absent" from "key present with value `null`" (`'phone' in
+  req.body` is `false` in the first case, `true` with `req.body.phone === null` in the second) —
+  Java's Jackson needed a raw-`JsonNode` escape hatch specifically because a typed request record
+  cannot express that distinction, and Node has no equivalent problem. A Zod `.partial()` schema
+  combined with checking key presence on the parsed body (not on the Zod-validated output alone,
+  which may normalize absence and `undefined` together) is the natural fit here — verify this
+  assumption against a real request before committing to the approach, since it is a design
+  choice this document is making on Node's behalf rather than one already tested against this
+  codebase.
+- `.strict()` on the `PATCH /me` Zod schema so `role`/`isActive`/any other server-owned field is
+  rejected with `400 VALIDATION_FAILED`, not silently dropped — this is what actually satisfies
+  [AC-AZ-09](./acceptance-criteria.md#ac-az-09--registration-cannot-escalate)'s second half, per
+  [Validation](../stacks/nodejs/coding-standards.md#validation) and
+  [coding-standards.md](../stacks/nodejs/coding-standards.md)'s "never accept a server-owned
+  field" rule.
+- `PUT /me/password` must revoke every **other** session for the user while keeping the caller's
+  current session valid — [SessionService](../stacks/nodejs/architecture-specification.md)'s
+  equivalent `revokeAllExcept`-shaped method, unit-tested since Step 1 if it was built ahead of
+  need, but only exercised through real HTTP here for the first time.
+- The common-password deny-list used by registration (Step 1) should be reused here rather than
+  duplicated — one deny-list, one place, consistent with
+  [coding-standards.md](../stacks/nodejs/coding-standards.md)'s "a second money or date formatter"
+  rule generalized to "a second copy of any shared rule."
+
+**Tests required.** [AC-AZ-09](./acceptance-criteria.md#ac-az-09--registration-cannot-escalate)'s
+second half (`role`/`isActive` rejected via `PATCH /me`, `400`, profile unchanged);
+[AC-SE-07](./acceptance-criteria.md#ac-se-07--password-change-revokes-other-sessions-but-not-the-callers)
+through real HTTP; `PUT /me/password`'s `INVALID_CREDENTIALS` case (wrong `currentPassword`); a
+dedicated test for the omitted-vs-null-vs-present distinction on at least `phone` and `address`,
+since this is the one endpoint in the whole contract where that distinction is load-bearing.
+
+**Done when.** `npm run test:run` passes; **Node's guest-facing slice (Phase 6 items 1-8) is
+complete**, the same milestone Spring Boot reached at its own Step 6; the outcome note for this
+step says so explicitly and updates the Phase 6 status table above accordingly, the same update
+this document needed (and initially missed) after Spring Boot's own Step 6.
 
 ---
 

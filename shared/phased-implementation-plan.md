@@ -2884,6 +2884,34 @@ check Node's own guest-facing slice reached at the end of its Step 6 — before 
 Phase 8 integration, confirm nothing drifted visually across the earlier steps while later ones were
 being built.
 
+**Outcome — done 2026-09-29.** `npm run ci` green (32 test files, 143 tests; `profile-screen` and
+`password-screen` confirmed as their own lazy chunks). `ProfileStore`, `MeApi`, and
+`shared/util/build-profile-patch.ts` (with its own pinned test, including the address
+all-or-nothing case) all ported per plan. Two real contract-vs-implementation gaps were found by a
+live click-through against `hotelapp-server-nodejs`, both worked around client-side rather than in
+the Node repo, per "stay in this stack":
+
+1. `GET /me`'s `address` is `null` for a guest who has never set one, not an object of empty
+   strings — `Profile.address` is typed `Address | null` here (a spec correction against the
+   React client's own `Profile` type, which still declares it non-nullable and only survives by
+   accident via defensive `?.` at read sites).
+2. `PATCH /me`'s `address.line2` rejects an explicit `null` (Node's zod schema has it
+   `.optional()` but not `.nullable()`, unlike every other address field) — confirmed by curling
+   live. Spring Boot's own `ProfileService.textOrNull` treats "omitted" and "null" identically for
+   every address field including `line2`, so the fix (`build-profile-patch.ts` omits the `line2`
+   key entirely rather than sending `null`) is compatible with both backends; sending `null` was
+   only ever compatible with one. Flagged here for a `account.schema.ts` fix (`line2` should be
+   `.nullable()` too) next time the Node repo is touched, matching the still-open phone/register
+   gap from Step 4.
+
+Manually verified end to end: edited first name and full address, confirmed the header's
+first-name display updated immediately (no reload, no session refetch); cleared phone and
+confirmed it persisted as `null` on reload, not `""`; attempted a password change with the wrong
+current password and got the field-level "That password is incorrect." message with no
+navigation; changed the password successfully and confirmed the caller stayed on
+`/account/password`, logged in, with the "signed out on your other devices" message shown. This
+closes Angular's entire guest-facing scope (items 1–6).
+
 ---
 
 ## Phase 8 — Integration and polish ⬜

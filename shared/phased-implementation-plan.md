@@ -2745,6 +2745,58 @@ shows it, a date change re-prices and shows the new-vs-old total when they diffe
 shows the refund wording before confirming and the outcome note after. Side by side with React's
 `:5173` (standing rule 6), the tab bar, status badges, and cancel dialog read as the same product.
 
+**Outcome.** `MyReservationsStore` backs both S8b and S8c per state-management.md, holding a list
+(tab/page-driven `GET /reservations`) and a single detail together — since the two screens never
+mount simultaneously in this app's single-outlet routing, `PATCH`/cancel only reload the *current*
+reservation in the store; an unmounted S8b's list naturally refetches fresh on next entry per
+state-management.md's "a store for an unmounted feature does not exist to reload" rule, so no
+cross-store event-signal plumbing was needed for this pair. `CancelDialog` and `ChangeDatesDialog`
+use the same native `<dialog>` + `showModal()` pattern as Step 2's `RoomTypeDialog` — `@angular/aria`
+22.2.0 still has no Dialog primitive (checked `node_modules/@angular/aria/types/*.d.ts` again; none),
+despite this step's own instructions saying otherwise, so the disclosed gap from Step 2 stands
+rather than building against a primitive that doesn't exist. Ported `reservation-tabs.ts` and
+`reservation-change-summary.ts` from the React client's `lib/reservationTabs.ts` and
+`lib/reservationChangeSummary.ts`, each shipped with its own test from the start per standing rule 2.
+
+**A real bug was found only by the required live click-through, not by the automated suite** —
+the same class of bug as Step 5's `CanDeactivateFn`/`isSubmitting` timing issue, a different
+instance of "a shared signal already moved on by the time you read it for a diff."
+`ChangeDatesDialog`'s confirmation compared the re-priced total against its own `reservation` input
+at message-render time, but that input mirrors `MyReservationsStore`'s live `reservation` signal,
+which the store's own `patchReservation` success handler already overwrites with the *new* pricing
+before the dialog's `await` resolves — so the message compared the new total to itself and
+silently dropped the "(was $X)" clause every time. Confirmed live: submitting a date change that
+moved the total from $747.00 to $996.00 rendered "Your total is $996.00." instead of "Your new
+total is $996.00 (was $747.00)." Fixed by snapshotting the pre-mutation total in `ngOnInit()` and
+diffing the confirmation message against that snapshot, never against the live input — with a
+dedicated regression test added (`change-dates-dialog.spec.ts`) that mutates the same store signal
+the way the real store does, so this exact failure mode can't silently regress.
+
+**Verified by execution**: `npm run ci` green (137 tests, 31 test files, up from 129/29 — new:
+`reservation-tabs.spec.ts`, `reservation-change-summary.spec.ts`, `my-reservations.store.spec.ts`,
+`reservation-list-screen.spec.ts` (including the tab-empty-copy and error-retry cases),
+`reservation-detail-screen.spec.ts` (the full status × `isRefundableNow` matrix as one parameterized
+test block, per this step's own named requirement), `change-dates-dialog.spec.ts` (the total-mutation
+regression above). Production build confirms `reservation-list-screen` and `reservation-detail-screen`
+are each their own lazy chunk.
+
+**Manually verified against a live `hotelapp-server-nodejs`**: registered a fresh guest, booked the
+seeded Harborview Grand KING room type end to end (Steps 4–5's flow), then from
+`/account/reservations` confirmed the Upcoming tab showed it with hotel name, room type, dates,
+status badge, total, and confirmation number; opened the detail screen and used "Change dates" to
+extend the stay twice (re-pricing and reassigning rooms both times, confirmed by the room number
+changing), each time reading the corrected "Your new total is $X (was $Y)." message; then cancelled
+inside the refundable window and saw "You'll receive a full refund of $996.00." before confirming,
+the same amount as the outcome note after, and native `<dialog>` focus returning to the invoking
+button automatically on close both times; the Cancelled tab then showed the reservation with its
+dates struck through and a muted "Cancelled" badge; a fresh page reload of the now-cancelled
+detail screen correctly fell back to "This reservation was cancelled. It was refundable." (the
+disclosed `cancelledAt`/exact-refund contract gap from React's own Step 6 applies identically here).
+Side by side with React's `:5173`, the tab bar, status badges, and dialogs read as the same product.
+
+No contract or shared-spec defect was found this step — the bug above was entirely in this
+client's own code, not a disagreement with `api-contracts.md`.
+
 #### Angular Step 7 (guest profile, password: S8a/S8d) — instructions for Copilot
 
 **Scope.** S8a (profile) and S8d (password change) — the other half of item 6, matching React's

@@ -22,7 +22,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 4 | `stacks/nodejs/` + `stacks/springboot/` | ✅ Done — 20 documents, including `V001__initial_schema.sql` |
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
-| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Step 1 (foundation, S1) is now done too, against live Node. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
+| 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-2 (foundation and property detail/room types, S1-S2) are now done too, against live Node. **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ |
 
 ---
@@ -2110,6 +2110,53 @@ proportions, same badge/chip styling, same button treatment. Confirm the Confere
 "Capacity"/"day" wording renders correctly if seeded test data includes one (see this file's
 "Database seed data update" entry earlier for the seeded `CONFERENCE_ROOM` row) — this is the one
 easy regression a fresh reimplementation could reintroduce.
+
+### Angular Step 2 (property detail, room types) — done 2026-09-29
+
+`hotelapp-client-angular@061f60f`. Built S2 in full: `PropertyDetailScreen` (hero with initials
+fallback, address/phone/description, the date/guest search-entry form navigating to the
+not-yet-built `/properties/:id/search` — 404s to a new wildcard-routed `NotFoundScreen`, same
+deferred-target pattern React used), the Rooms section as `RoomTypeCard`s (category label,
+"Sleeps N"/"Capacity N", accessible badge, amenity chips, "From $X / night" or "/ day"), and
+room-type detail route-addressable at `/room-types/:roomTypeId` either way. `PropertiesStore`
+extended with `detail`/`roomTypes`/`roomType` state rather than a second store, per
+state-management.md's table mapping `PropertiesStore` to both S1 and S2. `formatMoney` (and a
+`MoneyPipe` wrapper), `roomTypeCategoryLabel`/`occupancyLabel`/`rateUnit`, and phone display
+formatting ported as their own `shared/util/` modules, matching React's equivalents.
+
+**Verified by execution**: `npm run ci` green (lint/format/typecheck/test/build), 28 tests across
+7 files (store tests for the three new load methods plus `clearRoomType`'s reset, `formatMoney`
+against known values, and five-state component tests for both new screens using a stub store per
+testing-standards.md rather than real HTTP). Initial bundle still **80.21 KB gzip**, comfortably
+under the 300 KB budget. **Manually verified against a live `hotelapp-server-nodejs`** with the
+database's actual seeded room types (no manual seed insert was needed — later Node/Spring Boot
+steps had already seeded Harborview Grand with `KING`/`SUITE`/`DOUBLE`/`CONFERENCE_ROOM` room
+types and Lakeside Inn with two): all four room types render with correct badges, category
+labels, and pricing, including the Conference Room's "Capacity 20"/"From $349.00 / day" wording;
+clicking a room-type card opens its detail without leaving `/properties/harborview-grand`, and
+pasting the same `/room-types/:id` URL as a fresh direct load renders the identical content as a
+standalone full page; an unknown property slug renders "We couldn't find that hotel."; and
+`/properties/:id/search` 404s to the new S15 page as expected.
+
+**Judgment call, disclosed per standing rule 5 — the room-type "modal" mechanism.** This file's
+Angular Step 2 instructions above offered two options (a named/auxiliary outlet, or
+`Router.navigate` with `skipLocationChange`) for matching React's background-location modal
+pattern; neither turned out to fit cleanly. The implementation instead opens `RoomTypeDialog` (a
+native `<dialog>` + `showModal()`, mirroring the React client's own Step 6 native-dialog pattern)
+locally from `PropertyDetailScreen` with no route change, and calls `Location.go('/room-types/:id')`
+to push the URL onto the address bar — `pushState` never fires `popstate`, and Angular's Router only
+reacts to `popstate`/`hashchange` via its `Location.subscribe`, so the Router genuinely never learns
+about it and the property page stays mounted underneath. A direct load of that same URL never runs
+this code path; it is a real route match against `RoomTypeDetailScreen`, rendered as a full page.
+Closing the dialog calls `location.back()`; the same component also subscribes to `Location` so a
+direct browser Back-button press (not the dialog's own close control) closes it too. Behavior
+matches the spec ("modal on desktop, full page on a direct load, both at the same shareable URL");
+the mechanism is a third option beyond the two this file suggested, which is the kind of
+framework-shaped difference ui-specifications.md section 3 exists to hold.
+
+No contract or shared-spec defect was found this step — `GET /properties/{propertyId}/room-types`
+behaved exactly as `hotelapp-client-react`'s own Step 2 already characterized it (a non-paginated
+array, and `GET /properties/{propertyId}`'s embedded `roomTypes` confirmed flat).
 
 #### Angular Step 3 (search and results) — instructions for Copilot
 

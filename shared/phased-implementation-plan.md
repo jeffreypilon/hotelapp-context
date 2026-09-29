@@ -1764,6 +1764,793 @@ items as the prompt asked.
 
 ---
 
+### Angular implementation steps — detailed instructions for Copilot
+
+Prospective, sequenced build instructions for `hotelapp-client-angular`, mirroring React's own
+completed Steps 1–7 above one for one, in the same order and the same guest-facing scope (items
+1-6): foundation, public browsing, search, auth, booking, reservation management, profile/password.
+Admin (items 7-8) is out of scope here, same as it was for React and Node — see "Sequencing for
+interview readiness" earlier in this document.
+
+**Unlike a Step outcome above, which is a retrospective report written after the work landed, the
+steps below are written prospectively**, the same trial format used for the Node steps earlier in
+this document (see "Node implementation steps" above). A cold Copilot session given nothing but "do
+Angular Step N" should be able to find everything it needs from this section plus the documents and
+files it points into.
+
+**This project's stated goal for Angular is closer parity than a typical "same contract, different
+framework" rebuild**: Jeff intends to demo both frontends side by side to interviewers, so
+`hotelapp-client-angular` must look and behave like the same product as `hotelapp-client-react`, not
+merely satisfy the same shared `ui-specifications.md`. Sections 1-2 of that document are normative
+and byte-identical between the two stacks, but they under-specify exact Tailwind spacing, color
+choices, and component boundaries — React's already-built, already-verified-against-Spring-Boot
+implementation is the tie-breaker for anything the shared spec leaves open. Each step below names
+the specific React source file(s) to open and match, not just the shared spec section.
+
+**A gap worth flagging before Step 1 starts**: `hotelapp-client-angular/.github/copilot-instructions.md`
+does not yet carry the "commit and push regardless of step wording" / "a new non-obvious pure
+function ships with its own test" standing rules that had to be retrofitted into React's and Spring
+Boot's instructions mid-project after each repo hit the same gap (see the Phase 7 Step 1/2 outcomes
+above), and that Node's own instructions were flagged as still missing when its steps were written.
+Fold the rules below into that file directly, rather than relying on Copilot to re-read this section
+before every step.
+
+> **Standing rules for every step below**, stated once rather than seven times:
+>
+> 1. **Commit and push at the end of the step, regardless of what the step's own text says.** Both
+>    `hotelapp-client-react`'s and `hotelapp-server-springboot`'s Copilot instructions had this
+>    added mid-project, after two steps each landed fully verified but uncommitted.
+> 2. **Any new pure function or store method with non-obvious logic ships with its own test in the
+>    same commit.** React's Copilot instructions picked up this rule after the gap recurred three
+>    steps running (Phase 7 Steps 3 and 5 above); do not defer a `format.ts` / `cancellationDeadline.ts`
+>    / `buildProfilePatch`-equivalent test to "later." This applies equally to a `signalStore`'s
+>    `rxMethod` logic, which has no React analogue and is therefore new risk, not ported risk.
+> 3. **Verify completion by actually running `npm run test:run`, `npm run lint`, `npm run typecheck`,
+>    and `npm run build` and reading the raw output** — never report a step done from a self-summary.
+>    Check `git status` and `git log` before claiming anything is committed; an agent-reported "done"
+>    that was still uncommitted has happened repeatedly enough in this project (Spring Boot Step 1,
+>    React Steps 1 and 2) to be a named, recurring lesson.
+> 4. **Before starting the next step, add a short outcome note back into this document** — a new
+>    subsection under this one, in the same style as React's and Node's own Step outcomes: what
+>    shipped, the real test count read from raw output, any judgment call made, any contract or spec
+>    defect found. This document has gone stale against real progress before because an outcome
+>    update was skipped in the moment and never caught up (see "Doc-drift found and fixed" earlier in
+>    this document) — do not let that happen here too.
+> 5. **A judgment call, an ambiguity, or a contract/spec gap found while building is disclosed, not
+>    silently worked around** — the same discipline Spring Boot's, React's, and Node's steps followed
+>    throughout. If Angular's build finds that `ui-specifications.md`'s shared §1–2 span needs a
+>    correction, fix it in **both** `stacks/react/ui-specifications.md` and
+>    `stacks/angular/ui-specifications.md` and verify the shared span is still byte-identical
+>    afterward — the same discipline already used for the Conference Room wording fix, the phone-mask
+>    fix, and the card-mask fix (all recorded earlier in this file's project history).
+> 6. **Before marking a step done, run both dev servers side by side — Angular's `npm start` on
+>    `:4200` and React's `npm run dev` on `:5173`, against the same backend — and visually compare
+>    the equivalent screen.** The written spec and even a matching component test are necessary but
+>    not sufficient proof of parity for a pair of screens meant to look like the same product in a
+>    live interview demo. Note any visual divergence found this way in the step's outcome note, even
+>    a minor one — a spacing or color drift missed here is exactly the kind of thing an interviewer
+>    would notice looking at both screens side by side.
+
+#### Angular Step 1 (foundation) — instructions for Copilot
+
+**Scope.** Project skeleton, routing, Tailwind setup, the HTTP interceptor, session bootstrap, and
+S1 (property list) — the same scope React's Step 1 covered, including pulling session bootstrap
+forward from item 4 for the same reason React did.
+
+**Read first.**
+[architecture-specification.md](../stacks/angular/architecture-specification.md) in full — folder
+layout, routing, the API client layer, and application configuration are all foundational here;
+[state-management.md](../stacks/angular/state-management.md#the-library-decision) and its
+[Session state](../stacks/angular/state-management.md#session-state) section;
+[security-implementation.md](../stacks/angular/security-implementation.md#sessions-what-this-client-does-and-does-not-do);
+[environment-setup-guide.md](../stacks/angular/environment-setup-guide.md) in full, the same
+"written to be followed literally" discipline Node's Step 0 called out; the "Conventions" table at
+the top of [api-contracts.md](./api-contracts.md#conventions).
+
+**Match React — do not re-derive.**
+
+- **Session bootstrap belongs in this step, not item 4.** React's own Step 1 flagged this as a
+  judgment call (bootstrap is "the app's first action" per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#s0--app-shell), and the architecture
+  spec wires it unconditionally before any route). Angular's own architecture spec already settles
+  this the same way via `provideAppInitializer` — there is nothing to re-derive here, only to build.
+- **Match `hotelapp-client-react/src/App.tsx`'s S0 shell structure**: a root layout component
+  rendering a header, a dismissible-but-not-required network-error banner
+  (`bg-amber-50 px-4 py-2 text-sm text-amber-900`, "Unable to reach the server." plus a "Dismiss"
+  link), a flex-1 routed-content region, and a footer — `flex min-h-screen flex-col` on the outer
+  element so the footer sticks to the bottom on short pages. Angular's `SessionStore` exposes the
+  network-failure state the same way React's `useSession().networkError` does.
+- **Match `hotelapp-client-react/src/components/layout/Header.tsx` and `Footer.tsx` file-for-file**
+  for the visual structure: `border-b border-slate-200 bg-white` header, `mx-auto flex max-w-5xl
+  items-center justify-between px-4 py-3` inner row, the "HotelApp" wordmark linking home, a
+  `hidden md:flex` primary nav collapsing to a hamburger below `md`, and the user-area states table
+  from `ui-specifications.md#s0--app-shell` (skeleton chip while resolving; "Log in"/"Create
+  account" for anonymous; first name + role badge + a `role="menu"` dropdown for an authenticated
+  session). React's `UserArea` badge styling (`rounded-full bg-slate-100 px-2 py-0.5 text-xs
+  font-medium text-slate-700` for the Front Desk/Manager badge) and menu styling (`absolute right-0
+  z-10 mt-2 w-48 rounded-md border border-slate-200 bg-white py-1 shadow-lg`, items `block px-4 py-2
+  text-slate-700 hover:bg-slate-50`) are the tie-breaker for anything `ui-specifications.md` leaves
+  unstated about exact appearance — build the Angular ARIA menu primitive to produce the same visual
+  result, not a differently-styled equivalent. `Footer.tsx` is three lines of copy
+  (`border-t border-slate-200 bg-white`, `mx-auto max-w-5xl px-4 py-6 text-sm text-slate-500`) — copy
+  it exactly.
+- **Match `hotelapp-client-react/src/features/properties/PropertyListScreen.tsx`** for S1's layout:
+  `mx-auto max-w-5xl px-4 py-8`, an `<h1>` "Our hotels", search/city/sort controls in a
+  `flex flex-col gap-4 sm:flex-row` row, a responsive card grid
+  (`grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3`), and skeleton cards
+  (`h-56 animate-pulse rounded-lg bg-slate-200`) during loading. The property card itself
+  (`overflow-hidden rounded-lg border border-slate-200 shadow-sm transition hover:shadow-md`, a
+  16:9 photo region with an initials placeholder when `photoUrl` is null, `p-4` content) is the
+  visual template for every card-shaped list item in this application (room types, results,
+  reservations) — get it right once here and reuse the pattern.
+- **`page=0`/negative page must reach the server as-is and come back a 400, never be silently
+  clamped to 1** — React's Step 1 found and fixed exactly this bug
+  (`Number.isFinite` check, not `|| 1`), per
+  [api-contracts.md](./api-contracts.md#pagination-sorting-filtering)'s explicit rule. Free-text
+  filters (`q`, `city`) debounce ~300ms before writing to the URL, diffed against the *current* URL
+  parameters rather than a stale value, so the debounce effect's initial run does not strip an
+  existing `page` param from a deep link — the same bug class React's Step 1 fixed.
+- **The debug-visibility lines are part of this step, not a later polish pass**: React's `App.tsx`
+  logs a `"navigated"` debug line on every route change and `api/client.ts` logs an `"api request"`
+  debug line per call (method/path/status/duration, never the body). Angular's own
+  [logging-observability.md](../stacks/angular/logging-observability.md#the-console-logger) already
+  specifies the equivalent pair for this stack (a `Router` `NavigationEnd` subscriber; the HTTP
+  interceptor) — build both now rather than treating them as a Node/Spring-Boot-only feature.
+
+**Angular-specific concerns.**
+
+- **`provideAppInitializer` must resolve on `401`, never reject** — an anonymous visitor is not a
+  startup failure. A rejecting initializer hangs the app on a blank page for every anonymous visitor,
+  per [environment-setup-guide.md](../stacks/angular/environment-setup-guide.md#troubleshooting)'s
+  own named failure mode. This is the one place Angular's arrangement is structurally *better* than
+  React's: because bootstrap completes before the first route activates, no guard can ever observe
+  an unresolved session — see
+  [architecture-specification.md](../stacks/angular/architecture-specification.md#routing) and
+  [state-management.md](../stacks/angular/state-management.md#session-state). Do not port React's
+  `isResolved`-checking-guard pattern defensively as though the race still existed; it structurally
+  cannot here, though guards may still read `isResolved` per
+  [security-implementation.md](../stacks/angular/security-implementation.md#route-guards-and-their-real-status).
+- **`withCredentials: true` lives in the functional interceptor, set on every request, never per
+  call** — `HttpClient` defaults it to `false`, unlike `fetch`'s `credentials: "include"` which
+  React's wrapper sets once. Getting this wrong produces a `401` on exactly one screen, per
+  [architecture-specification.md](../stacks/angular/architecture-specification.md#the-api-client-layer)
+  and [security-implementation.md](../stacks/angular/security-implementation.md#sessions-what-this-client-does-and-does-not-do).
+- **`PropertiesStore` is a `signalStore`, route-provided**, following the exact shape in
+  [state-management.md](../stacks/angular/state-management.md#feature-stores)'s `AvailabilityStore`
+  example (`withState`/`withComputed`/`withMethods`, `tapResponse` required in the `rxMethod`, never
+  a bare `error` callback — an unhandled error inside `rxMethod`'s inner observable silently kills
+  the stream, per [coding-standards.md](../stacks/angular/coding-standards.md#async-and-data)).
+  `isEmpty` must be `computed()` from `status` and `results`, not a separate flag, so the empty state
+  never flashes during load.
+- **No component library, no Angular Material** — Angular ARIA (stable in Angular 22) plus Tailwind
+  tokens shared with the React client, per
+  [architecture-specification.md](../stacks/angular/architecture-specification.md#styling) and
+  [dependency-policy.md](../stacks/angular/dependency-policy.md#explicitly-not-allowed). Standalone
+  components throughout, `ChangeDetectionStrategy.OnPush` on every component, native control flow
+  (`@if`/`@for`/`@switch`), no `NgModule` for new code — per
+  [coding-standards.md](../stacks/angular/coding-standards.md#components).
+- **Runtime config, not compile-time**: `core/config/env.ts` prefers
+  `window.__HOTELAPP_CONFIG__` and falls back to the compiled value, with the **same global name** as
+  the React client, per
+  [architecture-specification.md](../stacks/angular/architecture-specification.md#configuration) and
+  [environment-setup-guide.md](../stacks/angular/environment-setup-guide.md#pointing-at-either-backend).
+  This is what makes "point either frontend at either backend" true of a *built* Angular bundle, not
+  only its dev server.
+- **Do not use the Angular CLI's `proxyConfig`.** It would make the API same-origin in dev and hide
+  the cross-origin credentialed-cookie path a real build exercises — an explicit trap named in
+  [environment-setup-guide.md](../stacks/angular/environment-setup-guide.md#cors-and-the-thing-that-will-bite-first).
+  Keep the API cross-origin in development, same as it is in a build, same as React already does.
+
+**Tests required.** This step predates any acceptance criterion the way Spring Boot's, Node's, and
+React's own Step 0/1 did — no `AC-XX-NN` is owed yet. Per
+[testing-standards.md](../stacks/angular/testing-standards.md#store-tests), `PropertiesStore` gets
+the five standard store assertions (loading → success/error transitions, `isEmpty` false while
+loading, a second in-flight call discarding the first response, an error not killing the stream).
+Per [testing-standards.md](../stacks/angular/testing-standards.md#interceptor-tests), the HTTP
+interceptor gets its own suite: `withCredentials: true` present on every request, the base URL
+applied, a `problem+json` body mapped to `ApiError`, a non-JSON error body still producing an
+`ApiError` rather than throwing, and — the one interceptor test with no React analogue worth
+calling out — `SessionInitializer` resolving (not rejecting) on a bootstrap `401`.
+
+**Done when.** `npm run ci` (lint, format:check, typecheck, test:run, build — per
+[devops-pipeline.md](../stacks/angular/devops-pipeline.md#local-equivalence)) passes clean. `npm
+start` on `:4200` renders the seeded property list against a running backend, matching React's
+`:5173` rendering of the same data side by side per standing rule 6 above. Reload the page while
+logged in (once Step 4 exists this becomes testable; for now, confirm reload preserves the
+anonymous-vs-resolving distinction correctly) and confirm `localStorage`/`sessionStorage` remain
+empty, per
+[environment-setup-guide.md](../stacks/angular/environment-setup-guide.md#verifying-the-setup-works)'s
+own step 6, "the one people skip and the one that catches a real policy breach."
+
+#### Angular Step 2 (public browsing: property detail, room types) — instructions for Copilot
+
+**Scope.** S2 (property detail: hero, address, description, date/guest search-entry form; the
+Rooms section as room-type cards) and room-type detail (S2's modal-or-route view), matching React's
+item 2 exactly.
+
+**Read first.** [ui-specifications.md](../stacks/angular/ui-specifications.md#s2--property-detail);
+[architecture-specification.md](../stacks/angular/architecture-specification.md#routing) for the
+`room-types/:roomTypeId` route entry;
+[security-implementation.md](../stacks/angular/security-implementation.md#xss) for the `safeImageUrl`
+equivalent, since every photo URL on this screen is admin-entered data rendered into a `src`
+attribute.
+
+**Match React — do not re-derive.**
+
+- **`PropertyRoomTypeSummary` is flat by design, not an oversight**: React's Step 2 curled the live
+  Spring Boot backend and confirmed `GET /properties/{propertyId}`'s embedded `roomTypes` field
+  carries no `description`, `amenities`, or `photos` — only
+  `{id, code, name, baseRate, currency, maxOccupancy, bedConfiguration, isAccessible}`. Type it this
+  narrowly in `core/api/types.ts` rather than guessing a richer shape; this screen's Rooms section
+  calls the separate `GET /properties/{propertyId}/room-types` endpoint for the full shape anyway,
+  the same as React does.
+- **Match `hotelapp-client-react/src/features/properties/PropertyDetailScreen.tsx`** for layout:
+  `mx-auto max-w-5xl px-4 py-8`, a `flex aspect-[21/9]` hero region with an initials fallback, then
+  name/address/phone/description, then the date/guest search-entry `<form>`
+  (`mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-slate-200 p-4`) whose submit
+  navigates to the (not-yet-built) search route — this 404s to S15 until Step 3 exists, the same
+  deferred-target pattern React used and the same one to use here.
+- **Match `hotelapp-client-react/src/features/properties/components/RoomTypeCard.tsx`** for the
+  Rooms section: a horizontal card stacking to vertical on mobile
+  (`flex flex-col gap-4 rounded-lg border border-slate-200 p-4 sm:flex-row`), a 16:9 photo region
+  fixed at `sm:w-56`, an "Accessible" badge (`rounded-full bg-slate-100 px-2 py-0.5 text-xs
+  font-medium text-slate-700`) when applicable, amenity chips in the same pill style, and a "Check
+  availability" button (`rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white
+  hover:bg-slate-700`) that is the primary-action button style for this entire application — reuse
+  it verbatim everywhere a primary action button appears in later steps.
+- **Port `roomTypeCategoryLabel`/`occupancyLabel`/`rateUnit` as one shared utility**, mirroring
+  `hotelapp-client-react/src/lib/roomTypeCategories.ts` exactly: a `CONFERENCE_ROOM` renders
+  "Capacity N" instead of "Sleeps N" and "/ day" instead of "/ night" — per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#s2--property-detail)'s explicit
+  callout and [domain-glossary.md](./domain-glossary.md#room-type)'s note that a
+  Conference Room follows the same full-day booking rules as a guest room without being one. This is
+  a judgment call React already made and fixed once as a real UX defect after shipping — do not
+  re-introduce "Sleeps 20" for a meeting room here.
+- **Port `safeImageUrl`** from `hotelapp-client-react/src/lib/safeImageUrl.ts` conceptually (Angular's
+  own version is specified in
+  [security-implementation.md](../stacks/angular/security-implementation.md#xss) — reuse that exact
+  validation logic, not a fresh reimplementation): reject anything that is not `http:`/`https:`
+  before it reaches a `[src]` binding, returning the initials placeholder on rejection.
+
+**Angular-specific concerns.**
+
+- **The room-type modal needs a background-location-equivalent pattern or an Angular ARIA dialog
+  driven by a secondary/auxiliary route, not React Router's `useLocation().state` trick**, which is
+  React-Router-specific and has no direct Angular Router equivalent. Angular Router's own answer is
+  either (a) a named/auxiliary outlet holding the modal while the primary route stays on the property
+  detail page underneath, or (b) opening the Angular ARIA dialog imperatively from the property
+  detail component when `room-types/:roomTypeId` is reached via an in-app link (`Router.navigate`
+  with `skipLocationChange: false` so the URL still updates and is shareable), falling through to a
+  standalone full-page render when the route is entered directly (no `NavigationStart` from within
+  the property detail page). Confirm which approach this Angular Router version actually supports
+  cleanly before building — this is exactly the kind of framework-shaped difference
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#3-angular-implementation-notes)
+  section 3 exists to hold, and it is fine for the mechanism to differ as long as the resulting
+  behavior (modal on desktop, full page on a direct load, both at the same shareable URL) matches.
+- **`withComponentInputBinding()`** delivers `propertyId`/`roomTypeId` as component `input()`s rather
+  than through `ActivatedRoute` injection — use it, per
+  [architecture-specification.md](../stacks/angular/architecture-specification.md#application-configuration).
+- **`OnPush` plus signals**: the date/guest form's local state is `signal()`s, not a reactive form —
+  it is a search-entry form that hands off to Step 3's URL state rather than validating and
+  submitting itself.
+
+**Tests required.** No `AC-XX-NN` criterion covers public catalogue browsing directly (the
+acceptance-criteria matrix starts at overbooking/cancellation/authorization/session behavior, none
+of which this step exercises) — same honest gap Spring Boot's and Node's own catalogue steps had.
+Per [testing-standards.md](../stacks/angular/testing-standards.md#component-tests), `PropertyDetail`
+and the room-type card/detail components get all five states (loading, success, empty — "This hotel
+has no rooms listed yet.", error `NOT_FOUND` — full-page "We couldn't find that hotel.", and any
+other error mapped generically), asserting the specified copy verbatim, queried by role and
+accessible name, not CSS selector or test id.
+
+**Done when.** `npm run ci` passes. Side by side with React's `:5173` (standing rule 6): the hero,
+address block, Rooms section cards, and room-type detail view read as the same product — same card
+proportions, same badge/chip styling, same button treatment. Confirm the Conference Room's
+"Capacity"/"day" wording renders correctly if seeded test data includes one (see this file's
+"Database seed data update" entry earlier for the seeded `CONFERENCE_ROOM` row) — this is the one
+easy regression a fresh reimplementation could reintroduce.
+
+#### Angular Step 3 (search and results) — instructions for Copilot
+
+**Scope.** S3 in full: the search form, sidebar filters, sort, result cards with discount pricing
+and scarcity text, and client-side date pre-validation — React's item 3, ui-specifications.md's own
+"most complex guest screen."
+
+**Read first.** [ui-specifications.md](../stacks/angular/ui-specifications.md#s3--search-and-results)
+in full; [state-management.md](../stacks/angular/state-management.md#caching-made-explicit) for the
+`availability` never-cached rule and the `switchMap`-not-`mergeMap` requirement; the acceptance
+criterion this screen's pricing display must render correctly,
+[AC-CX-10](./acceptance-criteria.md#ac-cx-10--pricing-arithmetic-and-rounding-order) — this screen
+does not compute the rounding itself (the server does), but a wrong render (e.g. rounding the
+already-rounded server value a second time, or applying `Number()` to a money string) would silently
+misrepresent a value the backend got right, so read the worked examples there before writing
+`formatMoney`.
+
+**Match React — do not re-derive.**
+
+- **Every sort option uses the `field:asc`/`field:desc` convention** — inferred by React's own Step 3
+  from `GET /properties`'s existing pattern, since the contract gives an explicit grammar for only
+  one of the four. Do not invent a different query-parameter shape.
+- **The room-type filter list is the static 5-value `room_type_code` enum**, not a per-property
+  endpoint (none exists scoped that narrowly) — reuse the same shared label map built in Step 2
+  (`roomTypeCategoryLabel`-equivalent) rather than a second copy.
+- **Rate-category labels always come from `GET /rate-categories`, never the raw enum value** — this
+  is the single rule React's project found violated repeatedly after this step first shipped it
+  correctly (`MILITARY_VETERAN` leaking onto S7 and S8c later, fixed as a real defect — see this
+  file's "Rate category shows its label everywhere" entry earlier). Build the one shared
+  `rateCategoryLabel(options, value)` lookup **now**, in this step, and make every later step that
+  renders a `rateCategory` (Step 5's S4/S6/S7, Step 6's S8c) call it — do not let this drift the way
+  it did in React, where it took a separate defect-fix pass to close.
+- **Match `hotelapp-client-react/src/features/search/SearchScreen.tsx`** for layout: the search form
+  row, a `flex flex-col gap-6 lg:flex-row` split with a `lg:w-64 lg:shrink-0` filter sidebar
+  (`fieldset`/`legend` for each filter group — room type, amenities, accessible-only, nightly-rate
+  min/max) and a flex-1 results column with a sort control and an `aria-live="polite"` results count
+  ("N room types available."). A `<select>` "Clear selection" link appears only when a rate category
+  other than `NONE` is chosen, per
+  [domain-glossary.md](./domain-glossary.md#rate-category)'s note that this is a UI
+  affordance resetting to `NONE` rather than a distinct value.
+- **Match `hotelapp-client-react/src/features/search/components/ResultCard.tsx`** for the result
+  card and its pricing block layout exactly: nightly rate first, a struck-through base rate only
+  when a discount applied (`line-through` on `text-sm font-normal text-slate-500`), the
+  "N nights · $total total" line, the rate-category label line only when not `NONE`, and scarcity
+  text (`text-sm font-medium text-amber-700`) — "Only 1 room left" at exactly 1, "Only N rooms left"
+  at 2–3, nothing above 3. This card reuses Step 2's `occupancyLabel`/`rateUnit` for the Conference
+  Room wording, same as React's does.
+- **Empty is a success, not an error.** A `200` with zero results renders "No rooms available for
+  these dates." plus "Try different dates" and "Clear filters" — never an error treatment, per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#s3--search-and-results).
+- **Client-side date pre-validation mirrors the server's messages exactly**, sourced from
+  [error-handling.md](../stacks/angular/error-handling.md#400--validation_failed)'s field-code table
+  — check-out after check-in, not in the past, at most 30 nights.
+
+**Angular-specific concerns.**
+
+- **`AvailabilityStore.search` must use `switchMap`, never `mergeMap`**, per
+  [state-management.md](../stacks/angular/state-management.md#feature-stores) — a late response from
+  an abandoned search (someone adjusting dates rapidly) must not overwrite a newer one. This is the
+  single highest-value store test in this suite per
+  [testing-standards.md](../stacks/angular/testing-standards.md#store-tests): emit the slow response
+  after the fast one and assert the newer result wins.
+- **Filter and search-parameter state reads from the URL via `toSignal(route.queryParamMap)`**,
+  feeding the store's `rxMethod` — one path, per
+  [state-management.md](../stacks/angular/state-management.md#url-state). Debounce free-text/numeric
+  filter inputs ~300ms with `debounceTime` before writing to the router, using `replaceUrl: true`
+  for intermediate writes, mirroring React's debounce-and-diff-against-current-URL pattern (which
+  fixed a real bug in Step 1 — an unconditional-on-mount effect stripping an unrelated URL param).
+  Reproduce the fix, not the bug: diff against the router's *current* query params before writing,
+  not a stale closure value.
+- **`ReferenceDataStore`** (root-provided, fetched once per session) is the source for `amenities`
+  and `rate-categories` here — do not fetch them per-component or refetch on every filter change,
+  per [state-management.md](../stacks/angular/state-management.md#caching-made-explicit).
+
+**Tests required.** No acceptance criterion covers search/availability display directly (pricing
+*arithmetic* is AC-CX-10, proven server-side; this screen only renders the result). Per
+[testing-standards.md](../stacks/angular/testing-standards.md#screens-worth-extra-attention), S3's
+entry is explicit: "URL is the source of truth" — filter changes update query parameters, and
+activating the route with parameters already present populates the form and filters correctly.
+Per the standing rule 2 above, ship this step's date-validation pure functions with their own tests
+from the start — **do not repeat React's own gap here**: React's Step 3 shipped this exact screen
+with zero new tests, a real, disclosed gap that had to be partially closed in Step 4 and fully
+closed only after a second escalation in Step 5. Angular has React's own outcome notes as a warning
+that this is a step where the coverage discipline is easy to skip under time pressure.
+
+**Done when.** `npm run ci` passes, `AvailabilityStore`'s `switchMap`-discards-stale-response test
+passes, and side by side with React's `:5173` (standing rule 6) the search form, filter sidebar, and
+result cards read as the same product — including the exact wording and placement of scarcity text
+and the struck-through base-rate treatment, which are easy to approximate rather than match exactly.
+
+#### Angular Step 4 (auth: login, registration, route guards) — instructions for Copilot
+
+**Scope.** S5 (login and registration) and the three route guards, matching React's item 4.
+
+**Read first.**
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s5--login-and-registration) in full;
+[architecture-specification.md](../stacks/angular/architecture-specification.md#routing)'s guard
+code sample; [security-implementation.md](../stacks/angular/security-implementation.md#route-guards-and-their-real-status);
+[state-management.md](../stacks/angular/state-management.md#form-state--signal-forms) for the
+onBlur/re-validate-on-change rule and the existing-credential exemption; every mention of sessions
+in [security-implementation.md](../stacks/angular/security-implementation.md) and the
+[decision-log.md](./decision-log.md) entry on the JWT-to-sessions reversal (entry 2), so no part of
+the removed design is reintroduced.
+
+**Match React — do not re-derive.**
+
+- **`Retry-After` is delta-seconds, never an HTTP-date** — carry this assumption forward rather than
+  re-investigating it; React's Step 4 already flagged that the contract does not specify the format
+  either way and the code comment overstates its own confidence — write the Angular equivalent's
+  comment more accurately than that, since this is a chance to fix the overstatement rather than
+  copy it.
+- **`INVALID_CREDENTIALS` is form-level, never field-level, on login** — "That email or password is
+  incorrect." The server deliberately does not say which credential is wrong; a field-level error
+  here would invent information the API withholds on purpose, per
+  [error-handling.md](../stacks/angular/error-handling.md#401--authentication).
+- **Match `hotelapp-client-react/src/features/auth/components/AuthLayout.tsx`** for the shared
+  login/register shell: `mx-auto max-w-sm px-4 py-16`, an `<h1>`, content, then a footer link
+  preserving `?next=` between the two routes. Match
+  `hotelapp-client-react/src/features/auth/LoginScreen.tsx` for the form itself: labeled inputs with
+  `rounded-md border border-slate-300 px-3 py-2 text-sm`, a full-width primary submit button
+  (`rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50`), and a
+  password field with a show/hide toggle (React's `PasswordField` component) rather than a bare
+  `type="password"` input.
+- **Registration shows "At least 12 characters" up front, with no character-class hint and no
+  strength meter** — per
+  [security-principles.md](./security-principles.md#passwords), there are no
+  character-class requirements, and the UI must not imply any.
+- **A login/register password field is exempt from live format validation** (it verifies an existing
+  credential once set) — the login screen's password input gets no shape validation beyond
+  "required," per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#1-conventions-for-every-screen)'s
+  exemption. This does **not** apply to registration's password field, which is *setting* a new
+  value and does enforce the 12-character minimum live.
+- **`RequireStaff`/`RequireManager`-equivalent guards are built but not wired into any route yet** —
+  `/admin` doesn't exist until the deferred admin phase. Prove them with a guard unit test per
+  [testing-standards.md](../stacks/angular/testing-standards.md#guard-tests), the same "built,
+  tested, unwired" pattern React's Step 4 used.
+
+**Angular-specific concerns.**
+
+- **Guards are functional `CanActivateFn`s reading the `SessionStore`**, per
+  [architecture-specification.md](../stacks/angular/architecture-specification.md#routing)'s exact
+  code sample: `authGuard` returns `true` or a redirect `UrlTree` to `/login` with `next` set to
+  `state.url`; `staffGuard`/`managerGuard` compare **rank**, never set membership
+  (`role >= FRONT_DESK_STAFF`, matching
+  [api-contracts.md](./api-contracts.md#authorization) and
+  [AC-AZ-06](./acceptance-criteria.md#ac-az-06--front-desk-staff-cannot-perform-manager-only-actions)'s
+  rank-not-membership requirement, provable the same way Node's Step 1 proved AC-AZ-11 — by direct
+  test, not inference).
+- **No `isResolved`-check-and-wait pattern is needed in the guard body** — bootstrap already resolved
+  before the router evaluates any guard, a structural guarantee Step 1 established. Do not port
+  React's `if (!isResolved) return <FullPageSkeleton />` pattern into the guard itself; it has
+  nothing to wait for here. (Guards may still read `isResolved` defensively per
+  [security-implementation.md](../stacks/angular/security-implementation.md#route-guards-and-their-real-status),
+  but there is no race to defend against.)
+- **No separate form/validation library** — Signal forms (stable in Angular 22) or typed reactive
+  forms, validated with Angular's own validator functions, consistent within a feature. This is a
+  genuine asymmetry from React, which needs `react-hook-form` + `zod` for the same behavior — do not
+  add an equivalent pair of dependencies here; none is needed, per
+  [dependency-policy.md](../stacks/angular/dependency-policy.md#the-approved-set).
+- **Server field errors from `errors[]` apply via `setErrors` on the matching control** — this is why
+  contract `field` names and control names must match exactly, per
+  [coding-standards.md](../stacks/angular/coding-standards.md#async-and-data). Angular does not move
+  focus to an invalid control automatically on `setErrors`; call `focus()` on the first invalid
+  control explicitly after a failed submit, per
+  [error-handling.md](../stacks/angular/error-handling.md#announcing-errors) — a real behavioral gap
+  from React Hook Form's `setFocus`, not a copy-paste detail.
+- **Grep the finished code**: `grep -rniE "bearer|jwt|accessToken|refreshToken|auth/refresh"
+  src/` must return nothing, per
+  [security-implementation.md](../stacks/angular/security-implementation.md#what-must-never-reappear).
+  Also confirm `HttpClientXsrfModule`/`withXsrfConfiguration()` were not reached for — an
+  Angular-specific trap named in the same section, since this API relies on `SameSite=Lax`, not a
+  CSRF header.
+
+**Tests required.** [AC-SE-01](./acceptance-criteria.md#ac-se-01--login-establishes-a-session),
+[AC-SE-06](./acceptance-criteria.md#ac-se-06--expired-and-unknown-sessions-are-indistinguishable),
+[AC-SE-10](./acceptance-criteria.md#ac-se-10--credential-errors-do-not-reveal-whether-an-account-exists),
+[AC-AZ-06](./acceptance-criteria.md#ac-az-06--front-desk-staff-cannot-perform-manager-only-actions),
+and [AC-AZ-09](./acceptance-criteria.md#ac-az-09--registration-cannot-escalate)'s frontend-visible
+half are the acceptance criteria whose *server-side* guarantee this screen's behavior must not
+contradict — per this stack's own
+[testing-standards.md](../stacks/angular/testing-standards.md#the-honest-boundary), this repo does
+not re-prove them (that is the backends' job, against a real database); it proves instead that,
+given a known API response shaped like each of those outcomes, the screen renders what
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s5--login-and-registration) specifies.
+Per [testing-standards.md](../stacks/angular/testing-standards.md#guard-tests): `authGuard` returns
+a redirect with `next` set when there is no session; `staffGuard` admits Front Desk and Manager;
+`managerGuard` admits only Manager; being at the right property does not grant a higher rank. **This
+is also the step where [AC-SE-05](./acceptance-criteria.md#ac-se-05--a-session-works-interchangeably-against-both-backends)
+first becomes checkable from this client**: once this step lands, run the manual cross-backend
+walkthrough from
+[environment-setup-guide.md](../stacks/angular/environment-setup-guide.md#getting-a-backend)'s
+"Both at once" section by hand — log in against one backend, point Angular's runtime config at the
+other, reload, confirm the session is still honored — and record the result in this step's outcome
+note, the same manual proof Node's own Step 1 recorded.
+
+**Done when.** `npm run ci` passes, the guard test suite passes, and side by side with React's
+`:5173` (standing rule 6) the login and registration forms, the password-field show/hide toggle, and
+the form-level vs. field-level error placement all read as the same product.
+
+#### Angular Step 5 (booking flow: summary, payment, confirmation) — instructions for Copilot
+
+**Scope.** S4 (booking summary), S6 (payment), S7 (confirmation) — React's item 5, "the central
+feature" of the guest journey.
+
+**Read first.**
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s4--booking-summary),
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s6--payment-form), and
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s7--confirmation) in full;
+[data-model.md](./data-model.md#cancellation-policy) for the deadline formula this screen must mirror
+client-side; [security-implementation.md](../stacks/angular/security-implementation.md#payment-data)
+for what must never happen to card-shaped input;
+[api-contracts.md](./api-contracts.md#post-reservations--guest) for the exact request/response
+shape and the deterministic `…0000` decline case.
+
+**Match React — do not re-derive.**
+
+- **The cancellation-deadline formula must mirror the backend exactly, to the second**: `check_in_date
+  AT TIME ZONE property.timezone - INTERVAL '48 hours'`, per
+  [data-model.md](./data-model.md#cancellation-policy). React's
+  `lib/cancellationDeadline.ts` computes this with no date library, using
+  `Intl.DateTimeFormat`'s `timeZoneName: "longOffset"` to get the exact UTC offset for the property's
+  IANA zone at the relevant instant (DST included) — port this exact algorithm (parse the offset out
+  of the `GMT±HH:MM` formatted part, apply it, subtract 48 hours), not a reinterpretation, since a
+  reinterpretation is exactly how three independent implementations (Spring Boot, Node, this one)
+  could each compute a defensible-looking but subtly different answer. This needed a dedicated test
+  pinned to
+  [AC-CX-04](./acceptance-criteria.md#ac-cx-04--deadline-respects-the-propertys-timezone-not-the-servers)'s
+  two-timezone example and
+  [AC-CX-05](./acceptance-criteria.md#ac-cx-05--dst-transition-does-not-shift-the-deadline-arithmetic)'s
+  DST-transition case in React, after shipping once without one — write Angular's test for the same
+  two cases from the start, per standing rule 2.
+- **`formatTimestamp`-equivalent spells out every `Intl.DateTimeFormat` component explicitly**
+  (`year`, `month`, `day`, `hour`, `minute`, `timeZoneName: "short"`, `timeZone`) rather than using
+  `dateStyle`/`timeStyle`, because those two options cannot be combined with `timeZoneName` — a real
+  API limitation React's Step 5 hit, not a style choice.
+- **Match `hotelapp-client-react/src/features/booking/components/BookingSummaryCard.tsx`** for the
+  shared summary card used (in `"full"` variant) on S4 and (in `"condensed"` variant) on S6: hotel
+  name and, on the full variant only, address; room type name and bed configuration; dates with
+  nights; guests; rate category when not `NONE` (via the Step 3 `rateCategoryLabel` lookup — never
+  re-render the raw enum here); a price breakdown row (`nightlyRate × nights` on the left,
+  right-aligned total) followed by a bordered "Total" row; and, on the full variant only, the
+  cancellation policy in plain language using the property's timezone.
+- **Match `hotelapp-client-react/src/features/booking/PaymentScreen.tsx`** for S6: a
+  non-dismissible amber demo-payment banner as the first thing in the form region (`rounded-md
+  border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900`, exact copy: "This is a demo. No
+  payment is processed and no card details are stored. Do not enter a real card number."), a
+  collapsible `<details>`/`<summary>` "Test card numbers" panel, and a submitting-state full-screen
+  overlay (`fixed inset-0 z-50 flex items-center justify-center bg-white/80`, "Confirming your
+  booking…") that blocks the form. Card number formats in live groups of four capped at 16 digits
+  (`lib/cardNumber.ts`'s `formatCardNumber`) and expiry/CVV strip to digits-only and cap at their
+  real max length (`lib/digitsOnly.ts`) — port both algorithms; they are pure functions with no
+  framework dependency.
+- **The `Idempotency-Key` is generated once, in a field/component initializer, never inside the
+  submit handler** — React's `useRef(crypto.randomUUID())`, created on mount and stable across
+  repeat submit attempts. A per-attempt key defeats the header's whole purpose (a double-click or a
+  retry-after-decline would create two reservations). This is
+  [testing-standards.md](../stacks/angular/testing-standards.md#screens-worth-extra-attention)'s own
+  named highest-value test for S6 — assert the key is identical across two submit attempts.
+- **No price field is ever sent** — `POST /reservations`'s payload carries the booking parameters and
+  the payment block only; the server resolves pricing. Per
+  [security-implementation.md](../stacks/angular/security-implementation.md#input-validation), build
+  the request body explicitly rather than serializing the whole form.
+- **`ROOM_UNAVAILABLE`, `PAYMENT_DECLINED`, and `NOT_FOUND` each get their exact, distinct
+  presentation** from [error-handling.md](../stacks/angular/error-handling.md#2-the-mapping) — do not
+  collapse them into one generic failure banner. `ROOM_UNAVAILABLE` in particular "must never read as
+  a validation failure," per that document's own emphasis, since it is the client-visible face of the
+  database exclusion constraint and the guest did nothing wrong.
+- **Match `hotelapp-client-react/src/features/booking/ConfirmationScreen.tsx`** for S7: the
+  confirmation number as "the most prominent element on the page" (`font-mono text-3xl font-bold
+  tracking-wide`) with a copy button, full booking details below in the same summary-card shape as
+  S4/S6, a note that a confirmation email "would be sent in a production deployment," and a
+  `print:hidden`/`print:py-0` print stylesheet treatment on the action row.
+
+**Angular-specific concerns.**
+
+- **`BookingStore` backs S4/S6/S7**, per
+  [state-management.md](../stacks/angular/state-management.md#feature-stores)'s store table — a
+  single route-provided store spanning all three screens, since booking context (room type, dates,
+  guests, rate category) must survive the screens' transitions and, per S4's own requirement, a full
+  page reload during the login detour. **Booking context lives in the URL query string, not the
+  store**, per
+  [state-management.md](../stacks/angular/state-management.md#url-state) — a store is discarded on
+  navigation away and back, which would silently lose the booking context exactly the way
+  `ui-specifications.md` calls "the worst UX failure available in this application." Re-derive
+  pricing from the URL parameters plus a fresh `GET /availability` call on S4/S6 mount, matching
+  React's `useBookingContext` hook's approach, rather than trying to carry a rich object through
+  router state.
+- **No `useBlocker`-equivalent is needed for the payment submission overlay.** React's Step 5
+  explicitly avoided React Router's `useBlocker` (incompatible with the declarative router this
+  application needs for the room-type modal) in favor of a `beforeunload` listener plus a disabling
+  overlay. Angular has a real, better-supported equivalent — a `CanDeactivateFn` guard, per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#per-screen-notes)'s own S6 row, which
+  explicitly calls for `CanDeactivateFn` plus a `beforeunload` listener together: the guard covers
+  in-app navigation attempts, `beforeunload` covers tab-close/refresh/external navigation, which
+  `CanDeactivateFn` cannot intercept. Use both — this is a case where Angular's Router gives a
+  cleaner answer than React's did, not a gap to work around.
+- **The idempotency key and card-shaped form state are held in the S6 component's own
+  signal/form state, never patched into `BookingStore`** — per
+  [security-implementation.md](../stacks/angular/security-implementation.md#payment-data), card data
+  must never reach a store, `localStorage`, a URL, or a log line, at any level, in any environment.
+  The booking submission is therefore a direct API-service call from the component, not a store
+  method, mirroring why React's payment mutation lives in the component rather than a shared hook
+  used elsewhere.
+
+**Tests required.** No acceptance criterion covers the frontend rendering of a successful booking
+directly; [AC-OB-01](./acceptance-criteria.md#ac-ob-01--two-concurrent-bookings-for-the-last-room-exactly-one-wins)
+(the database exclusion constraint) is what `ROOM_UNAVAILABLE` is the client-visible face of, and
+[AC-CX-04](./acceptance-criteria.md#ac-cx-04--deadline-respects-the-propertys-timezone-not-the-servers)/
+[AC-CX-05](./acceptance-criteria.md#ac-cx-05--dst-transition-does-not-shift-the-deadline-arithmetic)
+are what the ported cancellation-deadline function must agree with. Per
+[testing-standards.md](../stacks/angular/testing-standards.md#screens-worth-extra-attention): the
+`Idempotency-Key`-identical-across-attempts test (S6, "the single most valuable test in this suite");
+a test asserting card number, CVV, and expiry never appear in any outgoing request URL or in
+`localStorage`; the login-detour test for S4 (booking context survives a route away and back via the
+URL — "guards the worst available UX failure"). Ship `cancellationDeadline`'s port with its own test
+from the start, pinned to the same two worked examples React's did, per standing rule 2 — do not
+repeat React's own gap here either (Step 5 shipped this exact function with zero tests initially, an
+escalated, disclosed gap recorded earlier in this file).
+
+**Done when.** `npm run ci` passes, both named highest-value tests above pass, and a real
+click-through succeeds against a live backend: register or log in → S4 → S6 with `4242 4242 4242
+4242` → S7 → a fresh reload of the confirmation URL (a real fetch, not a stale cache) → back to S6
+with a card ending `0000` → field-level decline message with the form retained. Side by side with
+React's `:5173` (standing rule 6), the demo-payment banner, the price-breakdown block, and the
+confirmation number's prominent treatment all read as the same product.
+
+#### Angular Step 6 (guest reservation history, modify, cancel: S8b/S8c) — instructions for Copilot
+
+**Scope.** S8b (the four-tab reservation list) and S8c (detail, with status-gated modify/cancel)
+only — matching React's own split of item 6, which deliberately separated reservation management
+from profile/password the same way the backends did.
+
+**Read first.**
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s8--guest-account-and-booking-history)
+in full, specifically the S8b/S8c subsections; the cancellation and modification acceptance criteria
+this screen's action-gating must agree with:
+[AC-CX-01](./acceptance-criteria.md#ac-cx-01--just-before-the-deadline-refundable),
+[AC-CX-02](./acceptance-criteria.md#ac-cx-02--exactly-at-the-deadline-not-refundable),
+[AC-CX-03](./acceptance-criteria.md#ac-cx-03--just-after-the-deadline-not-refundable-but-still-cancellable),
+[AC-CX-06](./acceptance-criteria.md#ac-cx-06--modification-is-blocked-after-the-deadline),
+[AC-CX-07](./acceptance-criteria.md#ac-cx-07--modification-is-allowed-before-the-deadline-and-re-prices).
+
+**Match React — do not re-derive.**
+
+- **The server's `cancellation.isRefundableNow` is authoritative — this screen never recomputes
+  "now < deadline" itself.** React's Step 6 built the action-gating table entirely off `status` and
+  that one server-computed boolean; do the same rather than re-deriving the boundary client-side,
+  which would risk disagreeing with the server by the same class of second-level timing error
+  [AC-CX-02](./acceptance-criteria.md#ac-cx-02--exactly-at-the-deadline-not-refundable) exists to
+  catch.
+- **Cancelling inside the refundable window is allowed, not hidden** — the button is relabelled
+  ("Cancel reservation (non-refundable)"), never removed, once past the deadline. Hiding it would
+  misrepresent the policy, per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#s8--guest-account-and-booking-history).
+- **Match `hotelapp-client-react/src/features/account/ReservationListScreen.tsx`** for S8b: a
+  `role="tablist"` of four tabs (Upcoming/Past/Cancelled/All) sharing one `GET /reservations`
+  endpoint with different query parameters — there is no separate "history" endpoint — with distinct
+  empty copy per tab, and list rows showing hotel name, room type, dates (struck through when
+  cancelled), a status badge, confirmation number, total, and a "View" link. Default sort
+  `checkInDate:desc`.
+- **Match `hotelapp-client-react/src/features/account/ReservationDetailScreen.tsx` and
+  `components/CancelDialog.tsx`** for S8c: the cancel confirmation dialog states the refund outcome
+  explicitly before the guest confirms — "You'll receive a full refund of $X" or "This cancellation
+  is non-refundable. You will not receive a refund." — with button labels "Cancel reservation" /
+  "Keep reservation," never "Cancel"/"OK," which invert ambiguously on a cancel-a-thing dialog, per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#s8--guest-account-and-booking-history).
+  React's dialog is mounted only while open (`{open && <CancelDialog />}`) rather than driven by an
+  `open` prop on an always-mounted component — a fresh mount per open needs no reset-on-open effect
+  and gets native focus-return for free; Angular's equivalent is an `@if`-gated Angular ARIA dialog
+  for the same reason.
+- **A page load of an already-cancelled reservation falls back to `cancellation.isRefundableNow`
+  for its outcome wording**, since `GET /reservations/{id}`'s documented shape carries no
+  `cancelledAt`/exact-refund detail for a reservation cancelled in an earlier session — only a
+  same-session cancel (using the cancel mutation's own response) gets the precise wording. This is a
+  disclosed contract gap, not a bug to silently work around; flag it again here if it is still open
+  when this step is built.
+- **`INVALID_STATUS_TRANSITION` triggers a refetch before re-rendering actions**, per
+  [error-handling.md](../stacks/angular/error-handling.md#409--conflicts) — the client's view of
+  state is stale, and the message ("This reservation has changed. We've refreshed it — please try
+  again.") should read as an action taken, not a scolding.
+
+**Angular-specific concerns.**
+
+- **`MyReservationsStore` backs S8b/S8c**, per
+  [state-management.md](../stacks/angular/state-management.md#feature-stores). Its post-mutation
+  reload table applies here directly: `PATCH /reservations/{id}` reloads that reservation,
+  `MyReservationsStore`, and `AvailabilityStore`; `POST .../cancel` reloads the same set, per
+  [state-management.md](../stacks/angular/state-management.md#post-mutation-reloads).
+- **Tab and page state read from the router's query parameters via `toSignal`**, same URL-state
+  pattern as every prior list screen in this application.
+- **The cancel and change-dates dialogs are Angular ARIA dialog primitives**, which supply focus
+  trapping and `aria-modal` from the framework rather than hand-rolled — stable as of Angular 22, per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#per-screen-notes)'s S8c row.
+
+**Tests required.** Per
+[testing-standards.md](../stacks/angular/testing-standards.md#screens-worth-extra-attention), S8c's
+named requirement: "Action availability across the full status × deadline matrix from the spec" —
+build this as one parameterized test covering every `{status, isRefundableNow}` combination in the
+table in
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s8--guest-account-and-booking-history),
+not a handful of spot checks. Per standing rule 2, any new pure function this step introduces (a
+tab-to-query-parameter mapping, a change-summary comparison, mirroring React's
+`lib/reservationTabs.ts` and `lib/reservationChangeSummary.ts`) ships with its own test in the same
+commit — React's own equivalent step got this right unprompted after the Step 3/5 escalations, and
+Angular should not need the same lesson taught twice.
+
+**Done when.** `npm run ci` passes, the full status × deadline matrix test passes, and a real
+click-through against a live backend using a reservation from Step 5 succeeds: the Upcoming tab
+shows it, a date change re-prices and shows the new-vs-old total when they differ, and cancelling
+shows the refund wording before confirming and the outcome note after. Side by side with React's
+`:5173` (standing rule 6), the tab bar, status badges, and cancel dialog read as the same product.
+
+#### Angular Step 7 (guest profile, password: S8a/S8d) — instructions for Copilot
+
+**Scope.** S8a (profile) and S8d (password change) — the other half of item 6, matching React's
+final guest-facing step. **Closes Angular's entire guest-facing scope (items 1-6)** once this step
+lands, the same milestone React and Node each reached at the end of their own Step 7/6.
+
+**Read first.**
+[ui-specifications.md](../stacks/angular/ui-specifications.md#s8--guest-account-and-booking-history)'s
+S8a/S8d subsections; [api-contracts.md](./api-contracts.md#patch-me--guest) for the
+omitted-vs-`null` `PATCH` semantics; [api-contracts.md](./api-contracts.md#put-mepassword--guest);
+[security-principles.md](./security-principles.md#passwords).
+
+**Match React — do not re-derive.**
+
+- **`PATCH /me`'s "omitted is unchanged, explicit `null` clears it" semantics is the hard part of
+  this step.** React solved it by tracking React Hook Form's `dirtyFields` and building the request
+  body from only the touched fields (`lib/buildProfilePatch.ts`), sending `null` for a field the
+  guest cleared to empty rather than `""`. Angular's Signal forms / reactive forms expose an
+  equivalent per-control dirty state — build the same "only dirty fields, empty string becomes
+  `null`" patch builder, ship it with a test from the start (per standing rule 2), and treat `address`
+  as all-or-nothing: if any address sub-field is dirty, resend the **whole** current address object,
+  matching the contract's treatment of `address` as one top-level field rather than independently
+  changeable sub-fields.
+- **`email` is never a form field** — render it as read-only plain text with "Email cannot be
+  changed." as helper text, not a disabled input, avoiding the disabled-field accessibility ambiguity
+  a `readonly`/`disabled` input control raises.
+- **`PUT /me/password`'s `INVALID_CREDENTIALS` is field-level here** ("That password is incorrect.,"
+  attached to "current password"), a deliberate departure from the shared error map's form-level
+  wording for the same code on the login screen — per
+  [ui-specifications.md](../stacks/angular/ui-specifications.md#s8--guest-account-and-booking-history)'s
+  explicit S8d text. **This screen must not treat a `401`-adjacent code as a dead-session signal and
+  must not route to login on success** — the contract is explicit that the caller stays logged in,
+  the opposite of every other place this application sees a session-shaped error code. Confirm the
+  global `401`/`ACCOUNT_INACTIVE` interceptor rule correctly does not fire for `INVALID_CREDENTIALS`
+  here, since it is keyed on error code, not screen.
+- **Match `hotelapp-client-react/src/features/account/ProfileScreen.tsx`** for S8a: a read view
+  (labeled value pairs) with an "Edit profile" button, switching to a form view on click, with
+  "Save changes"/"Cancel" actions; phone renders through the shared phone-mask formatter both in the
+  input and in read mode, reformatting even pre-existing unmasked data on load (React found a real
+  bug here — a seeded phone number stored without formatting still needed to display masked).
+- **Match `hotelapp-client-react/src/features/account/PasswordScreen.tsx`** for S8d: three password
+  fields (current, new, confirm), a success message that explicitly notes other devices have been
+  signed out (true per the contract's `SessionService.revokeAllExcept` behavior, worth surfacing
+  since it is genuinely useful information), and — per the App-wide input-validation audit recorded
+  earlier in this file — a 12–24 character range on the *new* password field specifically (12 is the
+  fixed NIST-cited minimum from
+  [security-principles.md](./security-principles.md#passwords) and must not be
+  reopened; 24 is a UX ceiling well under bcrypt's 72-byte truncation point). The **current**-password
+  field gets no format validation beyond "required" — it verifies an existing credential, per the
+  same exemption Step 4's login password used.
+- **Every numeric-only field in this application is masked and length-capped, not merely hinted** —
+  the phone field here follows the same live-strip-non-digits-and-cap pattern established in earlier
+  steps (port `lib/phone.ts`'s exact 11-digit-starting-with-1 country-code-stripping fix: a naive
+  10-digit slice would silently truncate the wrong end of an 11-digit number with a leading country
+  code, a real bug React found against actual seeded data before shipping this).
+
+**Angular-specific concerns.**
+
+- **`ProfileStore` backs S8a/S8d**, per
+  [state-management.md](../stacks/angular/state-management.md#feature-stores). `PATCH /me` reloads
+  `ProfileStore` **and** `SessionStore` — the header's user-area first name must update immediately,
+  not wait for the session to happen to refetch on its own, per
+  [state-management.md](../stacks/angular/state-management.md#post-mutation-reloads)'s explicit row
+  for this mutation. `PUT /me/password` reloads nothing — the caller's own session stays valid, per
+  the same table.
+- **This closes the loop on the `rateCategoryLabel` and Conference Room label utilities built in
+  earlier steps** if S8a or S8d ever needs to render either — confirm no new duplicate lookup is
+  introduced here; there should be nothing left to add by this step for either.
+
+**Tests required.** No acceptance criterion covers profile editing or password change directly at
+the frontend layer (session revocation behavior —
+[AC-SE-07](./acceptance-criteria.md#ac-se-07--password-change-revokes-other-sessions-but-not-the-callers)
+— is proven server-side; this screen only needs to render the resulting success message correctly
+and must not itself force a re-login). Ship `buildProfilePatch`'s Angular port with its own test
+from the start, per standing rule 2, pinned to the same omitted/empty-string/`null` cases React's
+test covers, plus the address all-or-nothing case.
+
+**Done when.** `npm run ci` passes, the profile-patch test passes, and a real click-through against
+a live backend succeeds: edit and save a profile field, confirm the header updates immediately;
+clear an optional field and confirm it round-trips as `null` on reload, not an empty string; change
+the password and confirm the caller stays logged in. Side by side with React's `:5173` (standing
+rule 6), the profile read/edit views and the password form read as the same product. **This is also
+the point to do a full guest-facing side-by-side pass across all seven steps**, the same milestone
+check Node's own guest-facing slice reached at the end of its Step 6 — before moving on to admin or
+Phase 8 integration, confirm nothing drifted visually across the earlier steps while later ones were
+being built.
+
+---
+
 ## Phase 8 — Integration and polish ⬜
 
 1. **The Compose smoke test** from

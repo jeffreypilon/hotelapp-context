@@ -44,7 +44,8 @@ Those three are the project. Everything else elaborates them.
 | [devops-pipeline-overview.md](./shared/devops-pipeline-overview.md) | Setting up CI | Per-repo jobs, the OpenAPI diff, the Compose smoke test |
 | [local-integration-guide.md](./shared/local-integration-guide.md) | Running a frontend against a backend by hand, or switching which backend it talks to | The frontend×backend matrix, verified startup commands, and the switch procedure. A runbook, not a decision — cross-references each stack's own `environment-setup-guide.md` rather than repeating it |
 | [phased-implementation-plan.md](./shared/phased-implementation-plan.md) | Asking "what's next" | Build order, per-phase definition of done, open items |
-| [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | *Reversed* decisions only — three entries: dropped free-tier hosting, JWT→sessions, migration ownership |
+| [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | *Reversed* decisions only — five entries: dropped free-tier hosting, JWT→sessions, migration ownership, and two backend package-layout corrections (`domain/`'s exception hierarchy, Spring Boot's `web/` split) |
+| [defect-log.md](./shared/defect-log.md) | Asking "what's still broken" or logging a real bug found in one of the four code repos | Open and fixed defects in application code — distinct from decision-log.md, which tracks specification reversals, not code bugs |
 
 ---
 

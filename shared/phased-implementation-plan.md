@@ -1195,6 +1195,50 @@ run (`npm run test:tz`); the shared-clock/session-expiry interaction above has b
 assumed safe; the outcome note explicitly states whether the date-serialization carry-forward
 requirement is now closed for Node (mirroring how Spring Boot's Step 5 outcome above states it).
 
+#### What Node Step 5 actually taught us — done 2026-09-29
+
+Shipped all four guest reservation-management endpoints: `GET /reservations` (list, scoped
+server-side to the caller, never widened by a request parameter), `GET /reservations/{id}`,
+`PATCH /reservations/{id}` (re-prices at the room type's current `base_rate`, re-allocates only
+when dates changed, recomputes `cancellation.deadline`), and `POST /reservations/{id}/cancel`
+(the refund boundary, `wasRefundable`/`refund` shape). `domain/status.ts` is the fourth and final
+planned pure module, ported line-for-line from Spring Boot's `ReservationStatusRules` (`canCancel`/
+`canModify`, both `status === 'CONFIRMED'`). 13 new integration tests plus 2 new unit tests, 86
+total, all passing; `npm run ci` green.
+
+**Matched, not re-derived:** ownership resolves to `404`, checked before any mutation (AC-AZ-01/
+AC-AZ-03); `PATCH`'s re-allocation reuses the same `findAllocationCandidateRooms` query from Step
+4, extended with an optional `excludingReservationId` parameter (mirroring Spring Boot's
+`RoomRepository.findAllocationCandidates(..., excludingReservationId)`) — without it, a
+reservation being modified would wrongly disqualify its own currently-held room as a candidate
+whenever the new dates still overlap the old ones on the same room.
+
+**The date-serialization carry-forward requirement is now closed for the mutate path too.**
+`GET`/`PATCH`/cancel's reservation reads and writes all go through `$queryRaw` with `::text`
+casts on every date and money column, exactly like Step 4's `insertReservation` — never a Prisma
+model method for these columns — so `checkInDate`/`checkOutDate` round-trip as exact `YYYY-MM-DD`
+strings regardless of the Node process's own timezone, on create, read, and update alike.
+
+**The shared-clock/session-expiry interaction Spring Boot's Step 5 flagged does recur here in a
+different shape, and was designed around rather than patched.** Both `middleware/session.ts` and
+`domain/cancellation.ts` read the one injected `TimeSource`, so a test that reuses one login
+session across a multi-day `clock` jump to reach a cancellation-boundary instant hits the
+session's own 8-hour idle window first and gets a confusing `401` instead of exercising the
+boundary. Fix: mint a **fresh** session (`sessionService.createSession`) at the clock's
+already-jumped-to value immediately before the request under test, rather than trying to keep one
+session's sliding-expiry window synchronized with an arbitrarily large jump. `ManualClock` also
+gained a `set(iso)` absolute-jump method alongside its existing relative `advanceMs(ms)`, matching
+Spring Boot's own `MutableClock.set(Instant)`, for landing exactly on a computed boundary instant
+without accumulating rounding error across several `advanceMs` deltas.
+
+A second, unrelated test-fixture bug was found and fixed in `test/builders/reservation.builder.ts`
+(not a production bug): `insertTestReservation` only set `cancelled_at` for a `CANCELLED` fixture,
+so directly inserting a `CHECKED_IN`/`CHECKED_OUT` fixture (needed for AC-CX-09's illegal-transition
+tests) violated `reservations_status_timestamps_chk` (23514), which requires each status's own
+timestamp column non-null. Fixed once in the shared builder.
+
+No contract or migration mismatch was found this step.
+
 #### Node Step 6 (guest profile and password change) — instructions for Copilot
 
 **Scope.** `GET /me`, `PATCH /me`, `PUT /me/password`, per

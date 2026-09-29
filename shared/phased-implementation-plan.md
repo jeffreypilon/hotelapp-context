@@ -1304,7 +1304,10 @@ Shipped `GET /me`, `PATCH /me`, `PUT /me/password`. **This closes Node's guest-f
 status table above, updated accordingly. `GET /me`/`PATCH /me` are distinct from the existing
 `GET /auth/me` (the lighter `{ user }` bootstrap shape from Step 1): the new router returns the
 full, flat profile object, including `phone`, `address`, and `createdAt`. 9 new integration tests,
-104 total, all passing.
+95 total, all passing (**corrected 2026-09-29**: originally recorded as "104 total" here, which
+was never actually run — Node Step 7's own count only reconciled at 104 after adding a confirmed 9
+more tests on top of this step's real total, checked by running `npm run test:run` against this
+step's own commit, `hotelapp-server-nodejs@5275012`, directly).
 
 **The omitted-vs-null design this document proposed on Node's behalf (see the instructions above)
 was verified against zod 3.24.4's actual parse output before being relied on, not assumed:** for

@@ -219,6 +219,40 @@ machinery it does not need.
 
 ---
 
+## Ingestion, and three artefacts that are not hypothetical
+
+`services/ingestion.py` turns `corpus/*.pdf` into `ai_chunks`. The corpus is authored as Markdown
+and rendered to PDF by a committed script, so the reviewable source stays diffable while the
+pipeline ingests the form a hotel would actually hand over — see
+[ai-enablement-overview.md §8](../../shared/ai-enablement-overview.md#8-the-document-corpus).
+
+The renders are deliberately *realistic* — letterhead, running headers, page numbers, tables,
+figures — rather than pristine. Extracting text from the first rendered corpus with `pypdf`
+surfaced three artefacts, each verified by running it rather than anticipated:
+
+| Artefact | What it does | Required handling |
+|----------|--------------|-------------------|
+| **Justified text produces irregular inter-word spacing** | `may  cover  a  maximum  of  30  nights` — two or more spaces between words, from the renderer padding lines to justify | Normalise all runs of whitespace to a single space **before** chunking, matching, or embedding |
+| **Line wrapping splits phrases** | `...maximum of 30` / `nights.` — a phrase spans a line break | Same normalisation. A substring search on raw extracted text silently fails, which is how a policy-consistency check passes while testing nothing |
+| **Running headers and footers bleed into the text** | `HotelApp Hotels | Cancellation and Rate-Type Policy` appears once per page, as does the revision line | Strip repeated per-page furniture before chunking, or every chunk carries boilerplate that dilutes its embedding and pollutes retrieval |
+
+> **Design Decision — normalisation happens at ingestion, not at query time.**
+> It is tempting to normalise when comparing and leave the stored text as extracted. That stores
+> the artefacts in the embedding: a chunk whose text carries doubled spaces and a repeated page
+> header embeds to a slightly different point than the same prose would, and the error is
+> invisible because nothing fails — retrieval just gets quietly worse. Normalise once, store
+> clean text, and the stored vector represents the prose rather than the layout.
+
+Ingestion is **idempotent per document hash** (`ai_documents.content_hash`): an unchanged document
+is skipped rather than re-chunked and re-embedded, which is what keeps a re-run free rather than
+another bill from the embeddings provider.
+
+**Figures are invisible to this pipeline.** `pypdf` extracts text, not images. Every figure in the
+corpus therefore carries a caption, and no fact may exist only in a picture — a constraint recorded
+in `corpus/README.md` and enforced by review rather than by code.
+
+---
+
 ## Calling the backends
 
 `gateways/hotelapp.py` is the only module that may construct a request to a HotelApp backend.

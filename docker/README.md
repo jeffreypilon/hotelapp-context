@@ -7,8 +7,20 @@ section — that one is still the normal day-to-day loop.
 
 ## Prerequisites
 
-Docker Desktop (or an equivalent Docker + Compose install). Nothing else — no PostgreSQL, no JDK,
-no Node, no Maven required on the host.
+Docker Desktop (or an equivalent Docker + Compose install) running in the background. Nothing
+else — no PostgreSQL, no JDK, no Node, no Maven required on the host. You do **not** run anything
+through Docker Desktop's own UI or its container "Exec" terminal — all the commands below go in an
+ordinary terminal (Git Bash) on the host; Docker Desktop just needs to be open so the `docker`
+command has an engine to talk to.
+
+## Opening a fresh Git Bash terminal
+
+A new Git Bash window starts at `/` (the Git install root), not this folder. Every time you open
+one for this, `cd` here first:
+
+```bash
+cd /c/Users/Jeff/Documents/GitHub/hotelapp/hotelapp-context/docker
+```
 
 ## Running a combination
 
@@ -64,6 +76,25 @@ The frontend containers' entrypoint (`docker/write-config.sh` in each client rep
 file at container *startup* from the `API_BASE_URL` environment variable above — the built image
 itself is backend-agnostic, so switching backends is a different `up` command, not a different
 image.
+
+## Demonstrating an API call directly (e.g. in Postman)
+
+Every screen in the frontend is just calling the backend's REST API underneath — useful to show
+directly. For example, the property detail page at `http://localhost:5173/properties/harborview-grand`
+makes two calls, both public (no auth/cookie needed):
+
+```bash
+curl --location 'http://localhost:8080/api/v1/properties/harborview-grand' \
+--header 'Accept: application/json'
+
+curl --location 'http://localhost:8080/api/v1/properties/harborview-grand/room-types' \
+--header 'Accept: application/json'
+```
+
+Paste either `curl` command straight into Postman's import bar (or Import → Raw text) to turn it
+into a request. Swap `8080` for `3000` if you started the stack against the Node backend instead
+of Spring Boot. The `harborview-grand` slug works the same as the property's UUID would — the
+backend accepts either.
 
 ## What this is not
 

@@ -42,6 +42,7 @@ Those three are the project. Everything else elaborates them.
 | [acceptance-criteria.md](./shared/acceptance-criteria.md) | Writing tests | 40+ Given/When/Then criteria: no-overbooking, cancellation boundary, authorization, sessions. **Required in both backend repos** |
 | [versioning-strategy.md](./shared/versioning-strategy.md) | Changing the API or the schema | Breaking-change definition, why no `/v2` exists, **migration ownership: Flyway executes, Prisma introspects** |
 | [devops-pipeline-overview.md](./shared/devops-pipeline-overview.md) | Setting up CI | Per-repo jobs, the OpenAPI diff, the Compose smoke test |
+| [ai-enablement-overview.md](./shared/ai-enablement-overview.md) | Touching anything AI — retrieval, the MCP server, the assistant endpoints | The AI feature set, the `hotelapp-ai-service` boundary (**REST in, never SQL**), pgvector storage, the pass-through authorization model, the MCP server (both transports, and OAuth 2.1 under the 2026-07-28 resource-server model), the retrieval pipeline, the document corpus, and the evaluation strategy. Phase 9 builds it |
 | [local-integration-guide.md](./shared/local-integration-guide.md) | Running a frontend against a backend by hand, or switching which backend it talks to | The frontend×backend matrix, verified startup commands, and the switch procedure. A runbook, not a decision — cross-references each stack's own `environment-setup-guide.md` rather than repeating it |
 | [phased-implementation-plan.md](./shared/phased-implementation-plan.md) | Asking "what's next" | Build order, per-phase definition of done, open items |
 | [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | *Reversed* decisions only — five entries: dropped free-tier hosting, JWT→sessions, migration ownership, and two backend package-layout corrections (`domain/`'s exception hierarchy, Spring Boot's `web/` split) |
@@ -57,6 +58,7 @@ Those three are the project. Everything else elaborates them.
 | `stacks/angular/` | ✅ **Written** (Phase 3) — 12 documents |
 | `stacks/nodejs/` | ✅ **Written** (Phase 4) — 10 documents |
 | `stacks/springboot/` | ✅ **Written** (Phase 4) — 10 documents |
+| `stacks/ai-service/` | ⬜ **Planned** (Phase 9) — same 10-document set. Design decided in [shared/ai-enablement-overview.md](./shared/ai-enablement-overview.md) |
 
 **All 44 stack documents are written.** See
 [phased-implementation-plan.md](./shared/phased-implementation-plan.md) for what each phase

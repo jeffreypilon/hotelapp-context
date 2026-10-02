@@ -42,6 +42,14 @@ Derived from [project-overview.md](./project-overview.md). Consumed by
 
 ## Entity overview
 
+> **The 11 tables documented here are the business schema, and they are the whole of what the two
+> backends touch.** A separate set — `ai_documents`, `ai_chunks`, `ai_eval_runs`, added by
+> `V002__ai_tables.sql` — is owned by `hotelapp-ai-service` and specified in
+> [ai-enablement-overview.md](./ai-enablement-overview.md#4-data-and-storage). They are listed
+> here only so their existence is not mistaken for undocumented drift. **Nothing in this document
+> depends on them, no business table references them, and the `ai_` prefix is the boundary**: that
+> service reads business data over REST and holds no database grant on any table below.
+
 ```
 users ──────────────┐
   │ (guest)         │ (front-desk staff scoped to)

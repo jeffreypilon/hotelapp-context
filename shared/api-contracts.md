@@ -273,6 +273,18 @@ All errors use RFC 9457 Problem Details with `Content-Type: application/problem+
 `ROOM_UNAVAILABLE` is the contract-level expression of the database's exclusion
 constraint. Both backends must translate SQLSTATE `23P01` into exactly this problem.
 
+**AI service codes.** These are raised only by `hotelapp-ai-service` (see the AI assistant
+section below). **Neither backend emits them**, and neither backend needs to know they exist.
+
+| `code` | Status | When |
+|--------|--------|------|
+| `QUESTION_TOO_LONG` | 400 | Input exceeds the configured ceiling. Checked before any model call, so an oversized question costs nothing |
+| `AI_CONTENT_FILTERED` | 422 | The model provider refused on policy grounds |
+| `AI_RATE_LIMITED` | 429 | The **provider** rate-limited the service. Deliberately distinct from `RATE_LIMITED`, which means this service limited the caller — conflating them tells a guest to slow down when the problem is upstream |
+| `AI_UNAVAILABLE` | 503 | No provider configured, provider unreachable, or circuit open. **An expected state, not a fault** — it is what the Compose demo returns with no API key |
+| `RETRIEVAL_FAILED` | 503 | The vector store is unreachable or the hybrid query failed. Separate from `AI_UNAVAILABLE` because the remedies are entirely different |
+| `AI_TIMEOUT` | 504 | A provider call exceeded its explicit deadline |
+
 ---
 
 ## Pagination, sorting, filtering
@@ -362,6 +374,23 @@ pages never duplicate or drop a row.
 | `GET` | `/admin/properties/{propertyId}/reports/occupancy` | Staff |
 | `GET` | `/admin/properties/{propertyId}/reports/arrivals` | Staff |
 | `GET` | `/health` | Public |
+
+### AI service endpoints — a different component implements these
+
+> **Everything above is implemented by *both* backends. Everything in this table is implemented
+> by `hotelapp-ai-service` and by neither backend.** Building any of it in Spring Boot or Node
+> is a defect, and the OpenAPI diff job — which compares the two backends to each other — would
+> correctly fail if one of them grew these paths.
+
+| Method | Path | Auth |
+|--------|------|------|
+| `POST` | `/assistant/ask` | Public (richer when a session is present) |
+| `POST` | `/assistant/search` | Public |
+| `GET` | `/assistant/health` | Public |
+| `POST` | `/mcp` | OAuth 2.1 |
+| `GET` | `/.well-known/oauth-protected-resource` | Public, **host root** |
+| `GET` | `/.well-known/oauth-authorization-server` | Public, **host root** |
+| `GET`/`POST` | `/oauth/authorize`, `/oauth/token`, `/oauth/introspect` | Per OAuth 2.1 |
 
 ---
 
@@ -1166,6 +1195,162 @@ the assigned room.
 
 Deliberately absent: ADR, RevPAR, and revenue-by-segment. The overview lists them under
 future enhancements.
+
+---
+
+## AI assistant endpoints
+
+> **Implemented by `hotelapp-ai-service`, not by either backend.** Design and reasoning in
+> [ai-enablement-overview.md](./ai-enablement-overview.md). These endpoints are **strictly
+> additive**: every criterion in [acceptance-criteria.md](./acceptance-criteria.md) must still
+> pass with this service stopped, and both frontends must render AI features as unavailable
+> rather than broken when it is.
+
+**They mount under `/api/v1/` for one specific reason.** The session cookie is scoped
+`Path=/api/v1`, and cookie scope is host plus path and **ignores port** — so a browser sends the
+session to `localhost:8000/api/v1/assistant/...` even though the backends are on `:8080`/`:3000`.
+Mounted anywhere else, the service receives no caller identity and pass-through authorization
+silently stops working. The two `.well-known` documents are the exception: RFC 9728 and RFC 8414
+require them at the **host root**, and they are unauthenticated metadata that needs no cookie.
+
+**The service never reads business data from the database.** Every live figure in an answer comes
+from the endpoints above, called with the caller's own session, so the assistant cannot report
+availability or pricing that the API would not also report.
+
+### `POST /assistant/ask` — Public
+
+Grounded question answering over the hotel document corpus. **A session is optional**: without
+one the assistant answers from public catalogue data and the corpus; with one it may additionally
+answer about the caller's own reservations, because the session is forwarded to the backend and
+the backend's existing authorization applies unchanged.
+
+```json
+{
+  "question": "Can I cancel my stay next Friday and get a refund?",
+  "history": [
+    { "role": "user", "content": "What's the cancellation policy?" },
+    { "role": "assistant", "content": "..." }
+  ]
+}
+```
+
+`history` is **optional and client-held**. The service stores no conversation state between
+requests; multi-turn context is whatever the client sends back. That keeps the component stateless
+and means a conversation is never readable by anyone who later obtains the database.
+
+**`200 OK`**, `Content-Type: text/event-stream`. Three event types:
+
+```
+event: token
+data: {"text":"You can cancel up to "}
+
+event: citation
+data: {"documentTitle":"Harborview Grand — Cancellation Policy","section":"Flexible rates","chunkId":"…"}
+
+event: done
+data: {"usage":{"promptTokens":1840,"completionTokens":212},"costUsd":"0.0043","cacheHit":false}
+```
+
+**A `done` event is the only successful terminator.** A stream that closes without one is a
+failure, and clients must treat it as such — a truncated stream is otherwise indistinguishable
+from a complete answer.
+
+**Failure after streaming has begun** cannot change the status code, so it arrives as a terminal
+event carrying the ordinary Problem Details body, after which the stream closes:
+
+```
+event: error
+data: {"code":"AI_TIMEOUT","detail":"…","traceId":"…"}
+```
+
+Text already streamed is **not** retracted; the client marks the answer incomplete. Removing text
+a guest has already read is worse than labelling it.
+
+Errors before the first byte are ordinary Problem Details responses: `400 QUESTION_TOO_LONG`,
+`429 RATE_LIMITED` (this service limited you) or `429 AI_RATE_LIMITED` (the provider did),
+`503 AI_UNAVAILABLE`, `503 RETRIEVAL_FAILED`.
+
+### `POST /assistant/search` — Public
+
+Resolves a free-text request into the parameters `GET /availability` already accepts, runs that
+search, and returns both.
+
+```json
+{ "query": "a quiet room for two next weekend, under $300, with a fridge" }
+```
+
+**`200 OK`**
+
+```json
+{
+  "interpretation": "2 guests · Fri 10 Oct – Sun 12 Oct · up to $300/night · refrigerator",
+  "parameters": {
+    "propertyId": "0192f3a5-…",
+    "checkInDate": "2026-10-10",
+    "checkOutDate": "2026-10-12",
+    "guests": 2,
+    "maxNightlyRate": "300.00",
+    "amenityCode": "REFRIGERATOR"
+  },
+  "results": { "data": [], "pagination": {} }
+}
+```
+
+`results` is the **verbatim `GET /availability` envelope**, so both frontends reuse their existing
+types and rendering with no new shape to support. `parameters` is returned so the UI can show what
+was understood and let the guest correct it — an interpretation the guest cannot see or edit is an
+interpretation they cannot trust.
+
+**`maxNightlyRate` is a decimal string**, like every other money value in this contract. The model
+never performs arithmetic on prices; totals come from `GET /availability`, already computed.
+
+Errors: `400 VALIDATION_FAILED` when the request resolves to parameters the availability endpoint
+itself rejects (the service does not silently repair them), plus the `AI_*` codes above.
+
+### `GET /assistant/health` — Public
+
+**`200 OK`**
+
+```json
+{
+  "status": "UP",
+  "provider": "UP" ,
+  "retrieval": "UP",
+  "backend": "UP",
+  "backendTarget": "springboot"
+}
+```
+
+`provider` may be `NOT_CONFIGURED`, which is a **supported state, not a failure** — the service
+runs without an API key and reports AI features unavailable. `status` stays `UP` in that case:
+"the service is running" and "the service can answer questions" are different facts, and collapsing
+them produces a green health check beside a broken assistant.
+
+`backendTarget` names which backend this instance is configured against, for the same reason
+`GET /health` carries `backend` — a tester needs to know which implementation answered.
+
+### MCP and OAuth endpoints
+
+`POST /mcp` is the MCP HTTP transport. The protocol and its authorization are defined by the MCP
+specification (revision **2026-07-28**) and the OAuth 2.1 RFCs, and **are not restated here** —
+restating a standard is how a project ends up with a subtly non-conformant version of it.
+
+What this contract fixes, because it is a choice rather than a given:
+
+- The MCP server is a **pure resource server**. It validates tokens; it never issues one and never
+  logs a user in. Per RFC 9728 it publishes Protected Resource Metadata, and per RFC 8707 it
+  rejects any token not audience-bound to itself.
+- **Access tokens are opaque and validated by introspection — never JWTs.** OAuth 2.1 does not
+  require a JWT, and [decision-log.md](./decision-log.md) entry 2 removed bearer-JWT
+  authentication from this project deliberately. This extends that decision rather than reversing
+  it.
+- **Dynamic Client Registration is not implemented.** The 2026-07-28 revision deprecated it in
+  favour of Client ID Metadata Documents; the single client is pre-registered.
+- **The stdio transport exposes only the public tool surface** and carries no credential. Guest
+  data and writes require the HTTP transport and a real authorization flow.
+
+Tool-level behaviour, including which tools write, is specified in
+[ai-enablement-overview.md §6](./ai-enablement-overview.md#6-the-mcp-server).
 
 ---
 

@@ -6,3 +6,9 @@ Desktop.ini
 .idea/
 *.swp
 *.log
+
+# Environment / secrets
+# docker/.env is how Compose picks up OPENAI_API_KEY -- it must never be committed.
+.env
+.env.*
+!.env.example

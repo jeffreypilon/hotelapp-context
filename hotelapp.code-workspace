@@ -4,7 +4,8 @@
     { "name": "2 · server-springboot", "path": "../hotelapp-server-springboot" },
     { "name": "3 · server-nodejs", "path": "../hotelapp-server-nodejs" },
     { "name": "4 · client-react", "path": "../hotelapp-client-react" },
-    { "name": "5 · client-angular", "path": "../hotelapp-client-angular" }
+    { "name": "5 · client-angular", "path": "../hotelapp-client-angular" },
+    { "name": "6 · ai-service", "path": "../hotelapp-ai-service" }
   ],
   "settings": {
     "files.eol": "\n",
@@ -12,7 +13,8 @@
     "search.exclude": {
       "**/node_modules": true,
       "**/target": true,
-      "**/dist": true
+      "**/dist": true,
+      "**/.venv": true
     }
   },
   "extensions": {

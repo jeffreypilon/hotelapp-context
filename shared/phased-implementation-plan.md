@@ -23,7 +23,8 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 5 | `copilot-instructions.md` / `CLAUDE.md` per implementation repo | ✅ Done — 2026-09-27 |
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-4 (foundation, property detail/room types, search/results, and auth/route guards, S1-S3 + S5) are now done too, against live Node (Step 4 also cross-verified against live Spring Boot for AC-SE-05). **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
-| 8 | Integration, smoke test, polish | ⬜ |
+| 8 | Integration, smoke test, polish | ⬜ **Partly done** — the single-backend "just run it" Compose stack (item 2) is built and verified across all four frontend/backend combinations. The two-backend smoke test (item 1), bulk seed data (item 3) and per-repo READMEs (item 5) remain |
+| 9 | AI enablement — `hotelapp-ai-service` | ⬜ **Specified, not started.** Design in [ai-enablement-overview.md](./ai-enablement-overview.md), ten documents in `stacks/ai-service/`, `V002` written and verified, the 16-document corpus authored. Steps 0–3 have detailed instructions; 4–8 are committed in scope but deliberately not yet detailed |
 
 ---
 
@@ -2935,6 +2936,253 @@ closes Angular's entire guest-facing scope (items 1–6).
 
 **Done means:** a reviewer with Docker and nothing else can run HotelApp, book a room, check
 the guest in, and see the calendar update — against either backend, from either frontend.
+
+---
+
+## Phase 9 — AI enablement ⬜
+
+Builds `hotelapp-ai-service`, the sixth repository: an MCP server, a retrieval-augmented guest
+assistant, and natural-language availability search.
+
+**Everything about *what* and *why* is settled** in
+[ai-enablement-overview.md](./ai-enablement-overview.md) and the ten documents in
+[`stacks/ai-service/`](../stacks/ai-service/). This section is *when and in what order*, and does
+not restate either.
+
+The three constraints that shape every step below, repeated because each is easy to violate
+accidentally:
+
+1. **Business data is read over REST, never SQL.** This service owns `ai_*` tables and holds no
+   database grant on any business table.
+2. **The model holds no credentials.** The caller's session is forwarded; authorization stays with
+   the backends.
+3. **It is strictly additive.** Every existing acceptance criterion must still pass with this
+   service stopped, and the four Phase 8 Compose combinations must still run **without an API key**.
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Walking skeleton | FastAPI up, `/health`, one real REST call to a backend, running under Compose |
+| 2 | `V002` applied, repositories, corpus ingestion | Corpus → chunks → embeddings → `ai_chunks` |
+| 3 | Hybrid retrieval | Dense + sparse → RRF → rerank, with the `EXPLAIN` test |
+| 4 | F3 guest assistant | The LangGraph graph, SSE streaming, citations |
+| 5 | F2 natural-language search | NL → `GET /availability` parameters |
+| 6 | F1 MCP over stdio | Public tool surface; the Claude Desktop demo |
+| 7 | OAuth 2.1 AS + MCP over HTTP | Full tool surface, including the two writes |
+| 8 | Evaluation suite | Golden set, RAGAS, committed floors, CI gates |
+| 9 | Frontend integration | Assistant UI in **both** frontends — see the prerequisite below |
+| 10 | Compose and docs | `--profile ai`, the pgvector image swap, README |
+
+**Done means:** a reviewer with Docker and an API key can ask the assistant a policy question and
+get a cited answer; can search in plain language and get real availability; and can connect Claude
+Desktop and have it find a room — **and** a reviewer with Docker and *no* key can still run
+everything from Phase 8 exactly as before.
+
+### A prerequisite that is not yet done
+
+**Item 9 is blocked on specification work that has not happened.** The assistant UI needs screens
+in [ui-specifications.md](../stacks/react/ui-specifications.md), whose §1–2 are **byte-identical**
+between the React and Angular copies. Adding the assistant to one frontend without specifying it
+for both is precisely the drift this project exists to prevent.
+
+Before item 9 starts: add the assistant screens to both copies of `ui-specifications.md` from one
+shared body, regenerate, and verify the identical span with `md5sum` — the procedure in
+[the context map](../context-map.md). Items 1–8 are unblocked and do not touch the frontends.
+
+### How these steps are written
+
+Detailed per-step instructions follow for **Steps 0–3 only**. That is deliberate.
+
+Every stack in this project has had a Step 0 whose entire purpose was to find what the later steps
+had wrong — Phase 6 Step 0 found the nullable-field serialization defect that would have made the
+two backends disagree on the wire, and it found it in a day rather than in Step 4. There is no
+sibling implementation to copy from here, so specifying Steps 4–8 in detail before Step 0 has run
+would be writing confident instructions about a service nobody has stood up.
+
+**Write the detailed instructions for Step N+1 once Step N's outcome is known**, exactly as Node's
+and Angular's steps were written. The table above is the commitment; the detail is not yet owed.
+
+---
+
+#### AI Step 0 — walking skeleton — instructions for Copilot
+
+**Scope.** A FastAPI service that starts, answers `/api/v1/assistant/health`, makes **one real
+REST call to a running backend**, and runs under Compose. No retrieval, no model calls, no MCP, no
+OAuth. The point is to prove the shape end to end before anything interesting is built on it.
+
+**Read first.**
+[architecture-specification.md](../stacks/ai-service/architecture-specification.md) in full —
+layering, folder layout, and the REST-only rule are foundational and everything later depends on
+getting them right the first time;
+[environment-setup-guide.md](../stacks/ai-service/environment-setup-guide.md) in full, following
+it literally and **rewriting it with what actually worked** as the last act of this step;
+[dependency-policy.md](../stacks/ai-service/dependency-policy.md#packaging);
+[module-registry.md](../stacks/ai-service/module-registry.md#import-rules-stated-once).
+
+**Build.**
+
+- `pyproject.toml` with `uv`, `requires-python = ">=3.13,<3.14"`, and **only** the dependencies this
+  step needs: `fastapi`, `uvicorn`, `pydantic-settings`, `httpx`, `structlog`. Resist installing the
+  whole approved set now — a dependency added before it is used is a dependency nobody can justify
+  when it breaks.
+- The **full folder skeleton** from the architecture spec, including empty `services/`,
+  `repositories/`, `domain/` packages. Creating the shape now means later steps add files rather
+  than argue about where files go.
+- `config/settings.py` validating the environment **once at startup** via `pydantic-settings`, and
+  refusing to start on a malformed value. `OPENAI_API_KEY` **absent must be valid** — the service
+  starts and reports the provider unconfigured. Get this right now; retrofitting graceful
+  degradation later is much harder than building it in.
+- `gateways/hotelapp.py` with a shared `httpx.AsyncClient` created at startup, and **one** method:
+  `get_properties()`. It forwards an inbound session cookie if present and **adds no credentials of
+  its own** — there must be no code path that could.
+- `transport/rest/health.py` returning the shape in
+  [api-contracts.md](./api-contracts.md#get-assistanthealth--public), reporting `provider` and
+  `backend` **separately**.
+- `transport/rest/problem.py` emitting RFC 9457, used by a global exception handler from the start.
+
+**Mount under `/api/v1/`.** Not `/ai/`, not `/`. The session cookie is `Path=/api/v1` and cookie
+scope ignores port, so this is what makes pass-through authorization possible at all. Mounted
+elsewhere it fails silently, with no error to explain why — the single most expensive mistake
+available in this step.
+
+**Prove it, do not assume it.**
+
+- `curl` the health endpoint with the backend **up**, then with it **stopped**, and confirm the
+  two reported states differ. A health check that is green when the backend is down is worse than
+  none.
+- Start the service with **no `OPENAI_API_KEY` at all** and confirm it starts cleanly.
+- Add `lint-imports` and the `repositories/` grep from
+  [devops-pipeline.md](../stacks/ai-service/devops-pipeline.md#the-rest-only-rule-is-greppable) to
+  CI **in this step**, while they trivially pass. A layering rule added after the violations exist
+  is a rule nobody can turn on.
+
+**Compose.** Add the service to `docker/docker-compose.yml` under `--profile ai`, on port 8000, and
+**swap the database image to `pgvector/pgvector:pg18`** — the official Postgres images ship no
+third-party extensions, and `CREATE EXTENSION vector` fails without it. Then re-run all four
+existing Phase 8 combinations **without** the `ai` profile and confirm they are unchanged.
+
+**Done means:** `docker compose --profile react --profile spring --profile ai up` brings
+everything up; the health endpoint reports both dependencies honestly; the four non-AI combinations
+still work with no API key; CI enforces the layering rules; and `environment-setup-guide.md` has
+been rewritten with commands that were actually run.
+
+**Expect this step to find something.** Every Step 0 in this project has. Report what it finds
+rather than working around it.
+
+---
+
+#### AI Step 1 — migrations, repositories, and corpus ingestion — instructions for Copilot
+
+**Scope.** `V002` applied, the three repositories, and `ingest` turning `corpus/*.pdf` into
+embedded rows in `ai_chunks`. Still no retrieval and no generation.
+
+**Read first.**
+[architecture-specification.md](../stacks/ai-service/architecture-specification.md#ingestion-and-three-artefacts-that-are-not-hypothetical)
+— the three extraction artefacts are **verified findings, not predictions**, and code that ignores
+them will appear to work;
+[`corpus/README.md`](https://github.com/jeffreypilon/hotelapp-ai-service) in the AI service repo;
+[data-model.md](./data-model.md) for the house SQL conventions;
+[versioning-strategy.md](./versioning-strategy.md#database-schema-migrations).
+
+**Build.**
+
+- **Do not write schema.** `V002__ai_tables.sql` already exists in `shared/migrations/` and is
+  verified. Assert at startup that the `vector` extension and the three tables exist, and **fail
+  fast** if not — the same posture as Spring Boot's `ddl-auto=validate`.
+- `repositories/` with **psycopg 3 and bound parameters**, explicit column lists, no `SELECT *`,
+  no ORM.
+- `services/ingestion.py`: parse with `pypdf` → **normalise** → chunk → embed → insert.
+
+**The normalisation is the substance of this step.** In this order, before chunking:
+
+1. Collapse every run of whitespace to a single space. Justified text produces
+   `maximum  of  30  nights`, and a substring search on raw text silently fails.
+2. Strip running headers and footers. They repeat once per page and otherwise land in every chunk,
+   diluting its embedding with boilerplate.
+3. Rejoin lines split mid-phrase.
+
+Write a unit test for each against the **real rendered PDFs**, not synthetic strings. These are the
+cases that actually occurred.
+
+- **Idempotency via `content_hash`**: an unchanged document is skipped, not re-embedded. Re-running
+  `ingest` must cost nothing. Verify by running it twice and confirming zero provider calls on the
+  second run.
+- `domain/chunking.py` is **pure** and deterministic — the same document must chunk identically
+  every time, or citations drift between ingests. Unit-tested directly, per the standing rule.
+
+**Done means:** `ingest` populates `ai_chunks` from all 16 documents; re-running is free; the
+normalisation tests pass against real PDFs; and `ingest --stats` reports chunk counts, token counts
+and the actual embedding cost.
+
+---
+
+#### AI Step 2 — hybrid retrieval — instructions for Copilot
+
+**Scope.** Dense + sparse retrieval, RRF fusion, cross-encoder reranking. **Still no generation** —
+this step ends with a ranked list of chunks, which is exactly the right place to stop.
+
+**Read first.**
+[ai-enablement-overview.md §7](./ai-enablement-overview.md#7-retrieval-architecture);
+[testing-standards.md](../stacks/ai-service/testing-standards.md) in full.
+
+**Build.**
+
+- The hybrid query in `repositories/chunks.py`: pgvector cosine (`<=>`) top-50 and Postgres
+  full-text (`ts_rank`) top-50, in **one statement**, each producing its own ranked set.
+- `domain/fusion.py` — Reciprocal Rank Fusion, **pure**, with unit tests covering ties, a document
+  present in one list only, and an empty list. These edge cases are the whole reason it is a
+  separate module.
+- Reranking via a local cross-encoder, **baked into the Docker image** rather than downloaded on
+  first use, which would break the offline property Phase 8 established. Run it through
+  `asyncio.to_thread` — it is the one genuinely CPU-bound step in the request path.
+
+**The `EXPLAIN` test is required in this step, not deferred.** Seed enough chunks to make the plan
+choice meaningful, `ANALYZE`, then assert the query plan **uses `ai_chunks_embedding_hnsw_idx`**.
+Call the same query method the production path calls, so the test cannot drift from what runs. This
+mirrors the Spring Boot test that asserts the availability query uses
+`reservations_no_overlap_excl`, and it exists for the same reason: an index built for a different
+operator class is simply never used, silently.
+
+**Done means:** a retrieval-only CLI returns sensible ranked chunks for a dozen hand-written
+questions; the `EXPLAIN` test passes; fusion is unit-tested; and retrieval never touches a business
+table.
+
+---
+
+#### AI Step 3 — the guest assistant (F3) — instructions for Copilot
+
+**Scope.** The LangGraph graph, SSE streaming, citations. The first step with a model call in it.
+
+**Read first.**
+[ai-enablement-overview.md §7](./ai-enablement-overview.md#7-retrieval-architecture) for the graph
+shape; [error-handling.md](../stacks/ai-service/error-handling.md) in full — **mid-stream failure
+is the part that is easy to get wrong**;
+[coding-standards.md](../stacks/ai-service/coding-standards.md#writing-code-around-a-language-model);
+[security-implementation.md](../stacks/ai-service/security-implementation.md).
+
+**Build.**
+
+- The graph exactly as the specification draws it, so the diagram and the code can be diffed by
+  eye.
+- **The retry edge is bounded in code, not in the prompt.** The counter lives in graph state and
+  the conditional edge reads it; the model is never asked whether it should try again. Assert that
+  a forced-insufficient grade terminates after exactly two retrieval passes.
+- Prompts as **files** in `prompts/`. Retrieved text is fenced and labelled as data, never
+  interpolated into an instruction.
+- SSE with `token`, `citation`, and `done`. A failure after the first byte is a **terminal `error`
+  event**, never a truncated stream — a stream that just stops is indistinguishable from a network
+  drop.
+- Every model call bounded: explicit `max_tokens`, timeout, retry policy. Record prompt tokens,
+  completion tokens and **cost** on the `done` event and in the request log line.
+
+**Verify by hand, in a browser, not only in pytest.** Ask a question whose answer is in the corpus
+and confirm the citation names the right document *and section*. Ask one whose answer is not, and
+confirm it declines rather than inventing. Ask about a guest's own reservation with and without a
+session, and confirm the difference comes from the backend's authorization rather than from the
+model's judgement.
+
+**Done means:** a cited, streamed answer in under 1.5s to first token; a mid-stream failure arrives
+as a terminal event; cost is recorded per request; and the service still starts and reports
+`AI_UNAVAILABLE` with no API key.
 
 ---
 

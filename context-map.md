@@ -59,7 +59,7 @@ Those three are the project. Everything else elaborates them.
 | `stacks/angular/` | ✅ **Written** (Phase 3) — 12 documents |
 | `stacks/nodejs/` | ✅ **Written** (Phase 4) — 10 documents |
 | `stacks/springboot/` | ✅ **Written** (Phase 4) — 10 documents |
-| `stacks/ai-service/` | ⬜ **Planned** (Phase 9) — same 10-document set. Design decided in [shared/ai-enablement-overview.md](./shared/ai-enablement-overview.md) |
+| `stacks/ai-service/` | ✅ **Written** (Phase 9) — same 10 documents. Design decided in [shared/ai-enablement-overview.md](./shared/ai-enablement-overview.md); **no code exists yet**, so its `environment-setup-guide.md` commands are specified but unvalidated |
 
 **All 44 stack documents are written.** See
 [phased-implementation-plan.md](./shared/phased-implementation-plan.md) for what each phase

@@ -47,6 +47,7 @@ Those three are the project. Everything else elaborates them.
 | [phased-implementation-plan.md](./shared/phased-implementation-plan.md) | Asking "what's next" | Build order, per-phase definition of done, open items |
 | [decision-log.md](./shared/decision-log.md) | Asking "why is this not X" | *Reversed* decisions only — five entries: dropped free-tier hosting, JWT→sessions, migration ownership, and two backend package-layout corrections (`domain/`'s exception hierarchy, Spring Boot's `web/` split) |
 | [defect-log.md](./shared/defect-log.md) | Asking "what's still broken" or logging a real bug found in one of the four code repos | Open and fixed defects in application code — distinct from decision-log.md, which tracks specification reversals, not code bugs |
+| [future-enhancements.md](./shared/future-enhancements.md) | Asking "why isn't this built" about something nobody decided against, or parking an idea | Deliberate deferrals that are not bugs, not reversals, and not in a phase. Opens by stating what belongs in it and what belongs in the other three trackers instead |
 
 ---
 

@@ -100,8 +100,14 @@ To apply the AI schema by hand against any database:
 ```bash
 docker run --rm -v "$PWD/../hotelapp-context/shared/migrations-ai:/flyway/sql:ro" flyway/flyway:11 \
   -url=jdbc:postgresql://host.docker.internal:5433/hotelapp \
-  -user=postgres -password=postgres -table=flyway_schema_history_ai migrate
+  -user=postgres -password=postgres -table=flyway_schema_history_ai \
+  -baselineOnMigrate=true -baselineVersion=0 migrate
 ```
+
+`-baselineOnMigrate`/`-baselineVersion=0` are required against the Compose database specifically,
+because by this point the business migration has already populated `public` and Flyway refuses to
+touch a non-empty schema with no history table of its own. `baselineVersion=0` sits below this
+history's own `V001`, so the migration still runs rather than being treated as already applied.
 
 The service **asserts at startup** that the tables and the extension exist, and fails fast if they
 do not — the same posture as Spring Boot's `ddl-auto=validate`.

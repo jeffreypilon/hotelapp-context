@@ -86,6 +86,13 @@ services:
       - -user=postgres
       - -password=postgres
       - -table=flyway_schema_history_ai
+      # Flyway refuses to touch a schema that already has objects in it with no history table of
+      # its own -- and by the time this runs, the `flyway` service above has already populated
+      # `public` with the 11 business tables. baselineOnMigrate tells it that pre-existing content
+      # is fine; baselineVersion=0 (below this history's own V001) is what stops it from treating
+      # "already baselined" as "V001__ai_tables.sql already applied" and silently skipping it.
+      - -baselineOnMigrate=true
+      - -baselineVersion=0
       - -connectRetries=10
       - migrate
 

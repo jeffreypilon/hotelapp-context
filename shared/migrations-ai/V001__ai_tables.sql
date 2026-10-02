@@ -81,7 +81,7 @@ CREATE TABLE ai_documents (
 -- resolved by the service against the REST API, and NULL for corpus-wide
 -- documents such as brand-level policy.
 COMMENT ON COLUMN ai_documents.property_id IS
-  'Scoping hint only. Intentionally not an FK -- see this file's header.';
+  'Scoping hint only. Intentionally not an FK -- see this file''s header.';
 
 -- content_hash makes ingestion idempotent: a document whose hash is unchanged is
 -- skipped rather than re-chunked and re-embedded, which is what keeps a re-run

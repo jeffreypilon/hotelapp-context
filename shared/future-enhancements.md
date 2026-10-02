@@ -80,6 +80,87 @@ once clients are not all yours.
 
 ---
 
+## 4. Staff-facing document upload for the RAG corpus
+
+**Deferred from:** Phase 9. Raised directly — *"do we need an admin console that would allow staff
+to upload the PDF documents, presumably that is how staff would submit them so they could be
+sliced and vectorized?"*
+
+Today the corpus is authored as Markdown in `hotelapp-ai-service/corpus/`, reviewed in a pull
+request, rendered to PDF by a committed script, and ingested by a CLI. Staff cannot add a document;
+a developer adds one and it goes through review like any other behavioural change.
+
+The fuller version would let Front Desk or Manager staff upload a PDF through the admin console,
+which would then be parsed, chunked, embedded and retrievable.
+
+### Why deferred — three reasons, in order of weight
+
+**1. It presupposes an admin console that does not exist.** Admin endpoints (Phase 6 items 9–12)
+are unbuilt in **both** backends, and admin screens (Phase 7 items 7–8) are unbuilt in **both**
+frontends. "Add upload to the admin console" is really "build the admin console across four repos,
+keeping the two frontends byte-identical in `ui-specifications.md`, then add upload." That is
+plausibly a larger body of work than the entire AI service, spent to deliver its least
+differentiated part.
+
+**2. It is CRUD, and CRUD is not what is scarce here.** The capabilities that make this project
+unusual are the MCP server, hybrid retrieval with committed evaluation floors, the pass-through
+authorization model, and the policy-consistency test. A file-upload form competes for time against
+those and wins nothing a reviewer has not seen many times.
+
+**3. It materially weakens two properties the current design guarantees.** This is the real
+argument, and the one worth preserving:
+
+- **The corpus is authored *from* the implemented rules and reviewed before it binds anything.**
+  Allow upload, and a well-meaning staff member can publish a document stating a 72-hour
+  cancellation window while both backends enforce 48. That answer then scores **perfectly** on
+  every standard RAG metric, because faithfulness measures agreement with the retrieved document,
+  not with the running application. The guarantee stops being structural and becomes a matter of
+  staff discipline — which is exactly the kind of guarantee this project exists to avoid relying on.
+- **The prompt-injection posture shifts.**
+  [security-implementation.md](../stacks/ai-service/security-implementation.md#3-prompt-injection-defence-in-depth-without-depending-on-it)
+  already states the principle: *a pipeline that is only safe because of who wrote the input is a
+  pipeline that becomes unsafe the first time a document is uploaded rather than committed.* Upload
+  also introduces untrusted PDF parsing, which has a genuine CVE history, plus file storage, size
+  and type validation, and a malware question none of which exist today.
+
+### The answer this absence buys
+
+Worth recording, because it is the point: *"Staff cannot upload documents. The corpus is
+version-controlled and reviewed like code, because a RAG corpus is behaviour — and here is the test
+asserting it still agrees with what the API enforces. If we allowed upload, these four things would
+have to change."*
+
+That is a stronger response to the question than a working upload form, and it is difficult to give
+without having actually reasoned it through.
+
+### A cheaper middle option, if the "operable, not a toy" signal is wanted
+
+A **read-only** corpus view in the admin console: documents, chunk counts, last-ingested
+timestamps, embedding cost, and the latest RAGAS scores from `ai_eval_runs`. It demonstrates
+operational awareness at a fraction of the cost, requires no upload path, and leaves the security
+posture and the authored-from-the-spec guarantee untouched. It would slot naturally beside the
+staff assistant (F4) once an admin UI exists.
+
+### If revisited, what actually has to be solved
+
+Not the upload itself — that part is easy. These are the hard parts, and skipping any of them is
+how this feature becomes a liability:
+
+1. **Reconciling an uploaded document with the implemented rules.** Either the policy-consistency
+   check runs against uploaded content and *blocks publication* on a contradiction, or a reviewer
+   approves each document before it becomes retrievable. Doing neither means the assistant can be
+   made to contradict the system by someone with no intent to.
+2. **A review and publication state.** A document would need to be uploaded, reviewed, and
+   *published* as distinct states, which is a workflow rather than a form.
+3. **Untrusted parsing.** Sandboxing or hardening the PDF parse path, with size and type limits
+   enforced before parsing begins.
+4. **Authorization.** Who may publish is a Manager-level decision, not Front Desk, and needs its
+   own acceptance criteria.
+5. **Re-ingestion and cost.** Publication triggers embedding, which costs money and must be
+   idempotent and rate-limited, or a staff member clicking twice pays twice.
+
+---
+
 ## Not here: open questions that block Phase 9
 
 One item discussed alongside these is **not** a future enhancement and is deliberately not

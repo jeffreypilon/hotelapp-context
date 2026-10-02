@@ -52,8 +52,17 @@ The database, migrations, and seed data are shared across all four combinations 
 
 ```bash
 docker compose down          # stop containers, keep the seeded database (named volume `pgdata`)
-docker compose down -v       # also drop the database -- next `up` re-migrates and reseeds
 ```
+
+> **CAUTION — DO NOT USE unless you mean to wipe the database.** `-v` here is Compose's flag for
+> "also delete volumes," **not** verbose logging. It permanently deletes `pgdata` — every
+> property, user, and reservation in it — the instant you run it. There is no confirmation
+> prompt. Only run this if you deliberately want to reset to a blank database (the next `up` will
+> re-migrate and reseed from scratch):
+>
+> ```bash
+> docker compose down -v
+> ```
 
 ## Ports
 

@@ -141,7 +141,7 @@ Embeddings live in the **same PostgreSQL 18.6 instance**, via `pgvector`.
 still lives in [`shared/migrations/`](./migrations/) — see
 [versioning-strategy.md](./versioning-strategy.md#database-schema-migrations) and
 [decision-log.md](./decision-log.md) entry 3. The `ai_*` tables and the `vector` extension
-arrive as a new `V002__ai_tables.sql`, authored here. **The Python service never creates its own
+arrive as a new `migrations-ai/V001__ai_tables.sql`, applied by a **separate** Flyway run so that optional AI schema never becomes mandatory schema. **The Python service never creates its own
 schema**, for the same reason the Node backend does not. `V001` is immutable.
 
 ---

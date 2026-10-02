@@ -18,42 +18,90 @@ Clone to running, literally.
 | `uv` | latest | Packaging and virtualenv management — [dependency-policy.md](./dependency-policy.md#packaging) |
 | Docker | any current | Testcontainers, and the Compose demo |
 | A running HotelApp backend | — | Spring Boot on `:8080` by default |
-| A migrated database | — | Including `V002__ai_tables.sql` |
+| A pgvector-capable database | — | **Only for this service.** See §1 |
 | An OpenAI API key | — | **Optional.** Without it the service starts and reports `AI_UNAVAILABLE` |
+
+> **`uv` is not assumed pre-installed.** On Windows, and verified in Step 0:
+> ```powershell
+> irm https://astral.sh/uv/install.ps1 | iex
+> $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"   # re-add in each new terminal
+> uv python install 3.13                                 # uv manages its own interpreter
+> ```
 
 ---
 
-## 1. The database needs pgvector, and the stock image does not have it
+## 1. The database needs pgvector — but only this service's schema does
 
-> **Phase 9 changes `docker/docker-compose.yml` in `hotelapp-context`:**
->
-> ```yaml
-> db:
->   image: pgvector/pgvector:pg18    # was postgres:18.6
-> ```
->
-> The official Postgres images ship only core extensions. pgvector is a third-party C extension
-> that must be compiled against a specific major version, and the stock image carries no build
-> tools or headers — so `CREATE EXTENSION vector` fails with the control file simply absent.
-> `pgvector/pgvector:pg18` is the official build with the extension precompiled.
->
-> **This change is deliberately deferred to Phase 9** so the Phase 8 demo stack stays exactly as
-> shipped and verified. It is not optional once the AI service exists.
+`pgvector` is a third-party C extension that must be compiled against a specific major version.
+The official Postgres images ship only core extensions, so `CREATE EXTENSION vector` fails there
+with the control file simply absent. Compose therefore uses **`pgvector/pgvector:pg18`**, the
+official build with the extension precompiled.
 
-Native local development needs the same thing: a PostgreSQL 18.6 with pgvector available, or the
-Compose database on `:5433`.
+> **The AI schema is applied by a separate Flyway run, and this matters more than it looks.**
+> It was briefly a `V002` in `shared/migrations/`, and that was wrong. Everything in that
+> directory is **mandatory**: Spring Boot's build copies every `V*.sql` onto its classpath and
+> applies it at startup, and both backends' CI migrates a stock `postgres:18.6` image. A migration
+> needing pgvector there made an *optional* sixth service a hard dependency of the whole project —
+> **Spring Boot stopped starting at all** against a native database without pgvector, even for
+> ordinary Phase 1–8 work, and both backends' CI would have broken next run.
+>
+> That contradicted the additive-ness guarantee in
+> [ai-enablement-overview.md §10](../../shared/ai-enablement-overview.md#10-non-functional-targets).
+> Found during Step 0, on a real machine.
+
+**So you do not need pgvector in your native PostgreSQL** unless you want to run this service
+against it. The four Phase 8 Compose combinations, native backend development, and both backends'
+CI are all unaffected.
+
+**For native AI development, point `DATABASE_URL` at the Compose database on `localhost:5433`** —
+it already has pgvector, and it is on a non-colliding port precisely so it can run alongside your
+native install:
+
+```
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/hotelapp
+```
+
+> **The two databases have different passwords, and that is not a typo.** It has caught people
+> already.
+>
+> | Database | Host port | User | Password | Has pgvector |
+> |----------|-----------|------|----------|--------------|
+> | Native PostgreSQL 18 | `5432` | `postgres` | **`password`** | No |
+> | Docker Compose | `5433` | `postgres` | **`postgres`** | Yes |
+>
+> The Compose credentials are a throwaway matching the CI pattern in
+> [devops-pipeline-overview.md](../../shared/devops-pipeline-overview.md#backend-repos-hotelapp-server-nodejs-hotelapp-server-springboot);
+> the native ones are whatever the local install was created with. **The port tells you which
+> password to use** — `5432` takes `password`, `5433` takes `postgres`. A connection failure
+> against either is almost always this.
+>
+> `.env.example` ships pointing at **native** (`5432`/`password`), because that is where the
+> backends run by default. Change both the port and the password together, or neither.
+
+Installing pgvector into a native Windows PostgreSQL is possible but requires compiling it with
+MSVC, and is unnecessary given the above.
 
 ## 2. Migrations
 
-Unchanged from the rest of the project: **Flyway applies the canonical SQL**, this service never
-creates schema ([versioning-strategy.md](../../shared/versioning-strategy.md#database-schema-migrations)).
+**Flyway remains the sole DDL executor** and this service never creates schema
+([versioning-strategy.md](../../shared/versioning-strategy.md#database-schema-migrations)). What
+differs is *which* Flyway run:
 
-`V002__ai_tables.sql` is authored in `hotelapp-context/shared/migrations/` and creates the
-`vector` extension plus `ai_documents`, `ai_chunks`, `ai_eval_runs`.
+| Location | History table | Applied by | Contains |
+|----------|---------------|-----------|----------|
+| `shared/migrations/` | `flyway_schema_history` | Spring Boot at startup; the `flyway` Compose service; both backends' CI | The 11 business tables |
+| `shared/migrations-ai/` | `flyway_schema_history_ai` | The `flyway-ai` Compose service, under `--profile ai` only | `ai_documents`, `ai_chunks`, `ai_eval_runs`, and the `vector` extension |
 
-The Compose `flyway` service already mounts `../shared/migrations`, so it picks `V002` up with no
-Compose change. Running the non-AI stack will therefore create the `ai_*` tables and leave them
-empty, which is correct and harmless.
+Separate history tables keep the two independent — neither run sees the other's migrations as
+missing. Numbering restarts at `V001` in the AI location because it is a separate history.
+
+To apply the AI schema by hand against any database:
+
+```bash
+docker run --rm -v "$PWD/../hotelapp-context/shared/migrations-ai:/flyway/sql:ro" flyway/flyway:11 \
+  -url=jdbc:postgresql://host.docker.internal:5433/hotelapp \
+  -user=postgres -password=postgres -table=flyway_schema_history_ai migrate
+```
 
 The service **asserts at startup** that the tables and the extension exist, and fails fast if they
 do not — the same posture as Spring Boot's `ddl-auto=validate`.
@@ -211,7 +259,7 @@ profile rather than an always-on service.
 | Symptom | Cause |
 |---------|-------|
 | `type "vector" does not exist` | Database is stock `postgres:18.6`, not `pgvector/pgvector:pg18` — see §1 |
-| Startup fails on missing `ai_chunks` | Flyway has not run `V002`. Start Spring Boot once, or run the Flyway CLI |
+| Startup fails on missing `ai_chunks` | The AI schema has not been applied. Run the `flyway-ai` Compose service (`--profile ai`) or the manual command in §2 |
 | Assistant answers but cannot see the guest's reservations | The session cookie is not reaching this service. Check the API is mounted under `/api/v1` and the browser origin is in `CORS_ALLOWED_ORIGINS` |
 | `AI_UNAVAILABLE` on every request | No `OPENAI_API_KEY`. This is a supported state, not a fault |
 | Retrieval returns nothing after a model change | `EMBEDDING_MODEL` changed without a re-ingest — §4 |

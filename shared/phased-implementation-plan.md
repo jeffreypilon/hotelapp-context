@@ -24,7 +24,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-4 (foundation, property detail/room types, search/results, and auth/route guards, S1-S3 + S5) are now done too, against live Node (Step 4 also cross-verified against live Spring Boot for AC-SE-05). **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ **Partly done** — the single-backend "just run it" Compose stack (item 2) is built and verified across all four frontend/backend combinations. The two-backend smoke test (item 1), bulk seed data (item 3) and per-repo READMEs (item 5) remain |
-| 9 | AI enablement — `hotelapp-ai-service` | ⬜ **Specified, not started.** Design in [ai-enablement-overview.md](./ai-enablement-overview.md), ten documents in `stacks/ai-service/`, `V002` written and verified, the 16-document corpus authored. Steps 0–3 have detailed instructions; 4–8 are committed in scope but deliberately not yet detailed |
+| 9 | AI enablement — `hotelapp-ai-service` | ⬜ **Specified, not started.** Design in [ai-enablement-overview.md](./ai-enablement-overview.md), ten documents in `stacks/ai-service/`, the AI migration written and verified, the 16-document corpus authored. Steps 0–3 have detailed instructions; 4–8 are committed in scope but deliberately not yet detailed |
 
 ---
 
@@ -2962,7 +2962,7 @@ accidentally:
 | # | Item | Notes |
 |---|------|-------|
 | 1 | Walking skeleton | FastAPI up, `/health`, one real REST call to a backend, running under Compose |
-| 2 | `V002` applied, repositories, corpus ingestion | Corpus → chunks → embeddings → `ai_chunks` |
+| 2 | AI schema applied, repositories, corpus ingestion | Corpus → chunks → embeddings → `ai_chunks` |
 | 3 | Hybrid retrieval | Dense + sparse → RRF → rerank, with the `EXPLAIN` test |
 | 4 | F3 guest assistant | The LangGraph graph, SSE streaming, citations |
 | 5 | F2 natural-language search | NL → `GET /availability` parameters |
@@ -3003,7 +3003,71 @@ and Angular's steps were written. The table above is the commitment; the detail 
 
 ---
 
+### Standing instructions for every AI step
+
+**These apply to every `AI Step N` below without being repeated.** A step may add to them; no step
+overrides them. They exist so that "Please do AI Step N" is a complete instruction and nothing has
+to be pasted alongside it.
+
+**1. Scope — which repository.**
+All code goes in **`hotelapp-ai-service`**. Do not modify `hotelapp-client-react`,
+`hotelapp-client-angular`, `hotelapp-server-nodejs`, or `hotelapp-server-springboot` — if a step
+appears to need a change in one of those, that is a finding to report, not a change to make.
+
+Files in `hotelapp-context` are **read-only except where a step explicitly names one**. Each step
+states its own exceptions in a "May also change" line. If a step's instructions ask you to update a
+`hotelapp-context` document and that document is not in its "May also change" list, treat the
+instruction as the exception and make the edit — the list is there to stop silent drift, not to
+block the step's own stated deliverables.
+
+**2. Read before writing.**
+Read every document in the step's "Read first" list, in full, before writing code. They are listed
+because something in them is load-bearing for that step.
+
+**3. Stop at the end of the step.**
+Do not begin the next one. Do not implement something a later step owns because it seems convenient
+now.
+
+**4. Escalate rather than work around.**
+If the specification is wrong, impossible, internally contradictory, or contradicted by reality,
+**say so and stop**. Do not invent a workaround and proceed. Every Step 0 in this project has found
+something; finding more is success, not failure. Report it in your summary with enough detail to
+act on.
+
+**5. Verify, then report what you actually ran.**
+Run the step's own verification literally. Then, before claiming completion, run all four:
+
+```bash
+uv run --frozen pytest tests -q
+uv run --frozen ruff check . && uv run --frozen ruff format --check .
+uv run --frozen mypy src
+uv run --frozen lint-imports
+```
+
+Report the real output, not a summary of it. **A claim of "all tests passing" that was true an hour
+ago is not a claim of "all tests passing."**
+
+**6. Beware tests that inherit the developer's environment.**
+Anything reading `OPENAI_API_KEY`, `DATABASE_URL`, or `.env` must pin those values explicitly in the
+test. A test that passes with no API key and fails with one is green in CI and red locally, which is
+the wrong way round. This has already happened once, in Step 0.
+
+**7. Commit and push when verification passes.**
+Conventional Commits. A prompt change is `feat:` or `fix:`, never `chore:`.
+
+**8. Two things that are easy to get wrong and expensive to find.**
+- The API mounts under **`/api/v1/`**. The session cookie is `Path=/api/v1` and cookie scope ignores
+  port, so mounting anywhere else means no caller identity arrives — and nothing errors.
+- **Database credentials differ by port.** Native PostgreSQL is `:5432` with password `password`
+  and has **no pgvector**. The Compose database is `:5433` with password `postgres` and **has**
+  pgvector. Anything needing `ai_*` tables wants `:5433`.
+
+---
+
 #### AI Step 0 — walking skeleton — instructions for Copilot
+
+**May also change:** `hotelapp-context/docker/docker-compose.yml`,
+`hotelapp-context/stacks/ai-service/environment-setup-guide.md`.
 
 **Scope.** A FastAPI service that starts, answers `/api/v1/assistant/health`, makes **one real
 REST call to a running backend**, and runs under Compose. No retrieval, no model calls, no MCP, no
@@ -3072,8 +3136,16 @@ rather than working around it.
 
 #### AI Step 1 — migrations, repositories, and corpus ingestion — instructions for Copilot
 
-**Scope.** `V002` applied, the three repositories, and `ingest` turning `corpus/*.pdf` into
+**May also change:** nothing outside `hotelapp-ai-service`. The AI migration already exists in
+`hotelapp-context/shared/migrations-ai/`; this step applies it, it does not author it.
+
+**Scope.** The AI schema applied, the three repositories, and `ingest` turning `corpus/*.pdf` into
 embedded rows in `ai_chunks`. Still no retrieval and no generation.
+
+**Which database.** Run this against the Compose database (`localhost:5433`, password `postgres`),
+not native PostgreSQL (`:5432`, password `password`, **no pgvector**). Apply the AI migration with
+`docker compose --profile ai up flyway-ai` from `hotelapp-context/docker/`, or the manual command
+in [environment-setup-guide.md §2](../stacks/ai-service/environment-setup-guide.md#2-migrations).
 
 **Read first.**
 [architecture-specification.md](../stacks/ai-service/architecture-specification.md#ingestion-and-three-artefacts-that-are-not-hypothetical)
@@ -3085,7 +3157,7 @@ them will appear to work;
 
 **Build.**
 
-- **Do not write schema.** `V002__ai_tables.sql` already exists in `shared/migrations/` and is
+- **Do not write schema.** `shared/migrations-ai/V001__ai_tables.sql` already exists and is
   verified. Assert at startup that the `vector` extension and the three tables exist, and **fail
   fast** if not — the same posture as Spring Boot's `ddl-auto=validate`.
 - `repositories/` with **psycopg 3 and bound parameters**, explicit column lists, no `SELECT *`,
@@ -3116,6 +3188,8 @@ and the actual embedding cost.
 ---
 
 #### AI Step 2 — hybrid retrieval — instructions for Copilot
+
+**May also change:** nothing outside `hotelapp-ai-service`.
 
 **Scope.** Dense + sparse retrieval, RRF fusion, cross-encoder reranking. **Still no generation** —
 this step ends with a ranked list of chunks, which is exactly the right place to stop.
@@ -3149,6 +3223,8 @@ table.
 ---
 
 #### AI Step 3 — the guest assistant (F3) — instructions for Copilot
+
+**May also change:** nothing outside `hotelapp-ai-service`.
 
 **Scope.** The LangGraph graph, SSE streaming, citations. The first step with a model call in it.
 

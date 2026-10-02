@@ -45,7 +45,7 @@ services:
 Then, in order:
 
 1. **Flyway CLI against the second checkout's `shared/migrations/`** — including
-   `V002__ai_tables.sql`. Identical to how the Node repo's CI migrates a database it cannot
+   the AI location, via a second Flyway invocation with `-table=flyway_schema_history_ai`. Identical to how the Node repo's CI migrates a database it cannot
    migrate itself, and for the same reason: Flyway is the sole DDL executor.
 2. **A backend container**, because this service reads business data over REST and no database
    fixture can substitute for one. Spring Boot by default.

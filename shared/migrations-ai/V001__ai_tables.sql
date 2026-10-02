@@ -1,20 +1,46 @@
 -- =============================================================================
--- V002__ai_tables.sql
+-- migrations-ai/V001__ai_tables.sql
 --
 -- Storage owned by hotelapp-ai-service: the document corpus, its embedded
 -- chunks, and evaluation history. Specified by shared/ai-enablement-overview.md
 -- and stacks/ai-service/architecture-specification.md. If this file and those
 -- documents disagree, the documents are right and this file is wrong.
 --
+-- =============================================================================
+-- WHY THIS LIVES IN ITS OWN MIGRATION LOCATION
+--
+-- This file was briefly shared/migrations/V002__ai_tables.sql, and that was
+-- wrong. Everything in shared/migrations/ is MANDATORY: Spring Boot's build
+-- copies every V*.sql there onto its classpath and Flyway applies it at startup,
+-- and both backends' CI migrates a stock postgres image. So a migration needing
+-- pgvector in that directory made an OPTIONAL sixth service a hard dependency of
+-- the entire project -- it stopped Spring Boot starting against any database
+-- without pgvector, including a developer's native install doing ordinary
+-- Phase 1-8 work, and would have broken both backends' CI.
+--
+-- That directly contradicted the additive-ness guarantee in
+-- ai-enablement-overview.md section 10: every existing acceptance criterion must
+-- still pass with this service stopped.
+--
+-- So AI schema is applied by a SEPARATE Flyway invocation, against its own
+-- history table (flyway_schema_history_ai), run only under Compose's `ai`
+-- profile or by hand when working on this service. Flyway remains the sole DDL
+-- executor -- that decision is untouched. What changed is that optional schema
+-- is no longer mandatory schema.
+--
+-- Numbering restarts at V001 because this is a separate history, not a
+-- continuation of the business schema's.
+-- =============================================================================
+--
 -- Target: PostgreSQL 18.6 WITH pgvector. The official postgres images ship no
 -- third-party extensions, so this migration requires the pgvector/pgvector:pg18
 -- image (or a host with pgvector installed) -- see
 -- stacks/ai-service/environment-setup-guide.md.
 --
--- Applied by Flyway ONLY, like every other migration here. The AI service never
--- applies DDL; it asserts at startup that these objects exist and fails fast if
--- they do not, which is the same posture as Spring Boot's ddl-auto=validate.
--- Forward-only and immutable once merged.
+-- Applied by Flyway ONLY. The AI service never applies DDL; it asserts at
+-- startup that these objects exist and fails fast if they do not, which is the
+-- same posture as Spring Boot's ddl-auto=validate. Forward-only and immutable
+-- once merged.
 --
 -- BOUNDARY: every table here is prefixed ai_, and the AI service's database role
 -- is granted rights on these and NOTHING else. Business data reaches that
@@ -55,7 +81,7 @@ CREATE TABLE ai_documents (
 -- resolved by the service against the REST API, and NULL for corpus-wide
 -- documents such as brand-level policy.
 COMMENT ON COLUMN ai_documents.property_id IS
-  'Scoping hint only. Intentionally not an FK -- see V002 comments.';
+  'Scoping hint only. Intentionally not an FK -- see this file's header.';
 
 -- content_hash makes ingestion idempotent: a document whose hash is unchanged is
 -- skipped rather than re-chunked and re-embedded, which is what keeps a re-run

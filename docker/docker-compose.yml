@@ -18,18 +18,20 @@
 #   API_BASE_URL=http://localhost:8080/api/v1 OPENAI_API_KEY=sk-... \
 #     docker compose --profile react --profile spring --profile ai up --build
 #
-# This requires the `db` image below to be pgvector-capable (see stacks/ai-service/
-# environment-setup-guide.md#1-the-database-needs-pgvector-and-the-stock-image-does-not-have-it)
-# -- the four combinations above are unaffected and still run with no OPENAI_API_KEY at all.
+# The four combinations above are unaffected: they still run with no OPENAI_API_KEY, and the AI
+# schema is applied by a separate Flyway service that only runs under `--profile ai`.
 
 name: hotelapp
 
 services:
   db:
-    # pgvector/pgvector:pg18, NOT postgres:18.6 -- the official image ships no third-party
-    # extensions, and `CREATE EXTENSION vector` (in V002__ai_tables.sql) fails with the control
-    # file simply absent. This is unconditional, not profile-gated: V002 runs on every Compose
-    # combination regardless of whether --profile ai is used.
+    # pgvector/pgvector:pg18 rather than postgres:18.6. The official images ship no third-party
+    # extensions, so `CREATE EXTENSION vector` fails with the control file simply absent.
+    #
+    # The AI schema itself is NOT applied here -- it is a separate Flyway run under the `ai`
+    # profile (see flyway-ai below), so the four non-AI combinations never touch pgvector. This
+    # image is a superset of the stock one and costs those combinations nothing, so it is used
+    # unconditionally rather than swapped per profile.
     image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: postgres
@@ -58,6 +60,32 @@ services:
       - -url=jdbc:postgresql://db:5432/hotelapp
       - -user=postgres
       - -password=postgres
+      - -connectRetries=10
+      - migrate
+
+  # AI schema, applied separately and ONLY under the `ai` profile.
+  #
+  # It is not part of the `flyway` service above because everything there is mandatory -- Spring
+  # Boot's build copies shared/migrations/V*.sql onto its classpath and applies it at startup, and
+  # both backends' CI migrates a stock postgres image. An AI migration in that path made an
+  # optional service a hard dependency of the whole project and stopped Spring Boot starting
+  # against any database without pgvector. See the header of migrations-ai/V001__ai_tables.sql.
+  #
+  # Its own history table keeps the two sets independent: neither Flyway run sees the other's
+  # migrations as missing.
+  flyway-ai:
+    profiles: [ai]
+    image: flyway/flyway:11
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../shared/migrations-ai:/flyway/sql:ro
+    command:
+      - -url=jdbc:postgresql://db:5432/hotelapp
+      - -user=postgres
+      - -password=postgres
+      - -table=flyway_schema_history_ai
       - -connectRetries=10
       - migrate
 
@@ -134,6 +162,8 @@ services:
       dockerfile: Dockerfile
     depends_on:
       seed:
+        condition: service_completed_successfully
+      flyway-ai:
         condition: service_completed_successfully
     environment:
       # Inside the Compose network, not the host-facing API_BASE_URL above -- defaults to the

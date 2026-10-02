@@ -58,7 +58,7 @@ Same rule as both backends, same reasoning, sharper stakes.
 
 - **Testcontainers PostgreSQL with the real `vector` extension** — the `pgvector/pgvector:pg18`
   image, not stock Postgres, which ships no third-party extensions.
-- **Flyway applies the canonical migrations**, including `V002__ai_tables.sql`, exactly as in the
+- **Flyway applies the canonical migrations**, plus `migrations-ai/` via its own invocation, exactly as in the
   Node repo's integration setup. The service never creates its own schema, in tests or anywhere.
 - **Retrieval is never mocked** —
   [dependency-policy.md](./dependency-policy.md#why-mocking-the-retrieval-path-is-prohibited-specifically).

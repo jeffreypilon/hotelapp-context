@@ -282,7 +282,7 @@ in `corpus/README.md` and enforced by review rather than by code.
 > Prisma. Explicit SQL with explicit column lists also matches the house rule the backends already
 > follow: never `SELECT *`, never serialize a row straight out.
 
-The `ai_*` tables arrive in `V002__ai_tables.sql`, authored in `hotelapp-context` like every other
+The `ai_*` tables arrive in `shared/migrations-ai/V001__ai_tables.sql`, authored in `hotelapp-context` like every other
 migration. Python asserts at startup that the expected tables and the `vector` extension exist,
 and **fails fast** if they do not — the same posture as Spring Boot's `ddl-auto=validate`.
 

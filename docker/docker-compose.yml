@@ -1,0 +1,118 @@
+# Phase 8 "just run it" demo stack -- see shared/phased-implementation-plan.md's Phase 8 item 2
+# and shared/devops-pipeline-overview.md#2-the-docker-compose-smoke-test for how this differs
+# from the (separate, not-yet-built) two-backend smoke-test topology.
+#
+# One frontend + one backend + one database, picked with Compose profiles:
+#
+#   API_BASE_URL=http://localhost:8080/api/v1 docker compose --profile react   --profile spring  up --build
+#   API_BASE_URL=http://localhost:3000/api/v1 docker compose --profile react   --profile node    up --build
+#   API_BASE_URL=http://localhost:8080/api/v1 docker compose --profile angular --profile spring  up --build
+#   API_BASE_URL=http://localhost:3000/api/v1 docker compose --profile angular --profile node    up --build
+#
+# Postgres is published on the host as 5433, not 5432, so this can run alongside the native
+# PostgreSQL used for day-to-day local development (see devops-pipeline-overview.md's "Local
+# development" section -- that workflow is untouched by any of this).
+
+name: hotelapp
+
+services:
+  db:
+    image: postgres:18.6
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hotelapp
+    ports:
+      - "5433:5432"
+    volumes:
+      # Postgres 18's image expects the mount at the parent dir, not .../data directly -- it
+      # manages a major-version-specific subdirectory itself now (pg_ctlcluster-compatible layout).
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hotelapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  flyway:
+    image: flyway/flyway:11
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../shared/migrations:/flyway/sql:ro
+    command:
+      - -url=jdbc:postgresql://db:5432/hotelapp
+      - -user=postgres
+      - -password=postgres
+      - -connectRetries=10
+      - migrate
+
+  seed:
+    image: postgres:18.6
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hotelapp
+    volumes:
+      - ./seed:/seed:ro
+    entrypoint: ["sh", "/seed/run-seed.sh"]
+
+  api-spring:
+    profiles: [spring]
+    build:
+      context: ../../hotelapp-server-springboot
+      dockerfile: Dockerfile
+      additional_contexts:
+        hotelapp-context: ..
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/hotelapp
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:4200
+    ports:
+      - "8080:8080"
+
+  api-node:
+    profiles: [node]
+    build:
+      context: ../../hotelapp-server-nodejs
+      dockerfile: Dockerfile
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/hotelapp
+      PORT: 3000
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:4200
+    ports:
+      - "3000:3000"
+
+  web-react:
+    profiles: [react]
+    build:
+      context: ../../hotelapp-client-react
+      dockerfile: Dockerfile
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-}
+    ports:
+      - "5173:80"
+
+  web-angular:
+    profiles: [angular]
+    build:
+      context: ../../hotelapp-client-angular
+      dockerfile: Dockerfile
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-}
+    ports:
+      - "4200:80"
+
+volumes:
+  pgdata:

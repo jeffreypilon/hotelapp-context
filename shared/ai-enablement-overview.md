@@ -410,7 +410,7 @@ the "a reviewer needs only Docker" property established in Phase 8.
 | Role | Default | Rationale |
 |------|---------|-----------|
 | Generation — the answer the guest reads | **GPT-5.4 mini** | Classification-shaped calls below use the cheaper tier; this is the one output a guest sees, so it is worth the better model |
-| Query rewrite, retrieval grading | **GPT-5.4 nano** | Both are classification-shaped decisions, not prose — production retrieval-grading implementations (Corrective RAG, Adaptive RAG) commonly use a small model for exactly this, at roughly a third nano's cost of mini |
+| Query rewrite, retrieval grading, F2 parameter extraction | **GPT-5.4 nano** | All three are classification/extraction-shaped decisions, not prose — production retrieval-grading implementations (Corrective RAG, Adaptive RAG) commonly use a small model for exactly this, at roughly a third nano's cost of mini |
 | Embeddings | `text-embedding-3-small` | $0.02/1M tokens — this corpus costs cents to embed. Upgrade to `-3-large` only if the golden set shows retrieval is the bottleneck |
 | Reranking | Local open-source cross-encoder | No major provider sells a reranker on this key; running it locally keeps the offline path intact and the per-query cost at zero |
 | Offline fallback | Ollama | Weaker, slower, free, and sufficient to prove the architecture does not depend on a vendor |

@@ -3292,6 +3292,72 @@ executed; and the service still starts and reports `AI_UNAVAILABLE` with no API 
 
 ---
 
+#### AI Step 4 — natural-language availability search (F2) — instructions for Copilot
+
+**May also change:** nothing outside `hotelapp-ai-service`.
+
+**Scope.** `POST /assistant/search`: one structured-output call extracting
+`GET /availability` parameters from free text, then calling that endpoint — once, or once per
+property when none is named. No LangGraph here —
+[ai-enablement-overview.md §7](./ai-enablement-overview.md#7-retrieval-architecture) already
+settled this: a single structured-output call does not need a graph, and wrapping it in one would
+be machinery this step does not use.
+
+**Read first.**
+[api-contracts.md's `POST /assistant/search`](./api-contracts.md#post-assistantsearch--public) in
+full, including both Design Decision callouts — the no-property fan-out and the live-property-list
+rule are both load-bearing for this step, not background;
+[api-contracts.md's `GET /availability`](./api-contracts.md#get-availability--public) for the exact
+parameter set being extracted;
+[ai-enablement-overview.md §11](./ai-enablement-overview.md#11-provider-and-model-selection) for
+the model tier;
+[coding-standards.md](../stacks/ai-service/coding-standards.md#structured-output-over-parsing-prose).
+
+**Build.**
+
+- **`gateways/hotelapp.py` gains `get_properties()`.** Called once per search request (not cached
+  across requests in this step — caching the property list is a reasonable later optimisation, not
+  a correctness requirement yet) to give the extraction prompt the current names, cities, and ids.
+  Never hardcode property names into the prompt text.
+- **One structured-output call**, GPT-5.4 nano, extracting into a schema matching
+  `GET /availability`'s parameters exactly — `propertyId`, `checkInDate`, `checkOutDate`,
+  `numGuests`, `roomTypeCode`, `rateCategory`, `accessibleOnly`, `amenityCode`,
+  `minNightlyRate`/`maxNightlyRate`. `rateCategory` and `amenityCode` are constrained to their real
+  enum values in the schema itself — an invalid value should be structurally impossible, not caught
+  after the fact.
+- **The current date, in UTC, goes into the prompt explicitly.** Nothing about "next weekend" is
+  resolvable without it, and this is the easiest thing in this step to forget since nothing will
+  fail loudly if it is missing — the dates will just be quietly wrong.
+- **Property resolution, exactly as specified:** a named or city-implied property → one
+  `get_availability` call, response passed through verbatim. No property resolvable → one call per
+  property from `get_properties()`, merge `data`, re-apply the requested `sort`, recompute
+  `pagination` over the combined set. The response shape is identical in both cases — write the
+  test that asserts this, not just the happy path.
+- **Missing critical info is not repaired, and is not a bare passthrough error either.** If
+  extraction cannot find check-in/check-out dates anywhere in the text, do not invent them. Return
+  `400 VALIDATION_FAILED` with a `detail` that names what is missing in plain language. A `detail`
+  that is just `GET /availability`'s own generic message is a worse experience than the assistant
+  in Step 3 already provides, and a regression in tone a reviewer would notice.
+- **`maxNightlyRate`/`minNightlyRate` stay decimal strings end to end.** The model extracts a
+  number from text; it never computes with one. Totals still come from `GET /availability`.
+- **A `hotelapp-ai search "<query>"` CLI command**, same precedent as `retrieve` and `ask`. No
+  frontend exists to verify this through yet.
+- **A committed smoke set, same spirit as Step 3's**, covering: a named property, an unnamed
+  property (exercises the fan-out — assert the merged result actually contains rows from both
+  properties, not just that it doesn't crash), a relative date ("next weekend"), an amenity
+  request, a rate-category phrase, and the missing-dates case.
+
+**Verify by hand, with the CLI.** Run the full smoke set and read every interpretation, not just
+the results — an interpretation that silently misreads "two guests" as `numGuests: 12` is a bug
+`GET /availability` will never catch, because 12 is a perfectly valid number.
+
+**Done means:** all six smoke-set cases produce correct parameters and a correct interpretation;
+the fan-out case genuinely merges rows from both properties; the missing-dates case explains itself
+rather than returning a bare validation error; and the service still starts and reports
+`AI_UNAVAILABLE` with no API key.
+
+---
+
 ## Open items carried into Phase 6
 
 1. **Spring Boot before Node in Phase 6** — followed in practice, not just recommended. Steps 0

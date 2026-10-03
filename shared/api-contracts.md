@@ -1290,11 +1290,16 @@ search, and returns both.
     "checkOutDate": "2026-10-12",
     "guests": 2,
     "maxNightlyRate": "300.00",
-    "amenityCode": "REFRIGERATOR"
+    "amenityCode": "REFRIGERATOR",
+    "rateCategory": "AAA_CAA"
   },
   "results": { "data": [], "pagination": {} }
 }
 ```
+
+`rateCategory` is extracted the same way as `amenityCode` when the guest names one ("I'm a AAA
+member") — one of the fixed enum values, defaulting to `NONE` exactly as `GET /availability` already
+does when omitted.
 
 `results` is the **verbatim `GET /availability` envelope**, so both frontends reuse their existing
 types and rendering with no new shape to support. `parameters` is returned so the UI can show what
@@ -1304,8 +1309,37 @@ interpretation they cannot trust.
 **`maxNightlyRate` is a decimal string**, like every other money value in this contract. The model
 never performs arithmetic on prices; totals come from `GET /availability`, already computed.
 
+> **Design Decision — no property named, no problem: search fans out instead of guessing or
+> rejecting.** `GET /availability` is single-property by design
+> ([its own section above](#get-availability--public)), but a guest should not have to name a
+> property before searching — most real hotel search works the other way around, and this chain
+> has exactly two properties to check. When extraction resolves a property (named, or implied by
+> city), this endpoint behaves exactly as shown above: one `GET /availability` call, the response
+> passed through unchanged. When it cannot, the service calls `GET /availability` **once per
+> property**, merges `data`, re-applies the requested sort, and recomputes `pagination` over the
+> combined set. The response **shape** is identical either way — a client cannot tell from the
+> envelope how many backend calls produced it, which is the point. This does not scale past a
+> handful of properties and is not meant to; it is sized to this chain, the same way the
+> in-process idempotency cache in `POST /reservations` is sized to a demo rather than a production
+> fleet.
+>
+> **Property names are resolved against the live `GET /properties` list, never against names
+> written into a prompt.** A name baked into the extraction prompt would go stale the moment a
+> property is renamed or a third one is added — the same reasoning that keeps rate categories and
+> amenity codes sourced from their own enums rather than hand-typed.
+>
+> **"Next weekend" needs a concrete today.** The extraction prompt is given the current date
+> explicitly, in UTC — there is no signal in free text to infer a guest's own timezone from, and
+> this matches the product's existing "dates only" posture elsewhere.
+
 Errors: `400 VALIDATION_FAILED` when the request resolves to parameters the availability endpoint
-itself rejects (the service does not silently repair them), plus the `AI_*` codes above.
+itself rejects (the service does not silently repair them), plus the `AI_*` codes above. **When
+the gap is something extraction itself noticed** — most commonly no check-in/check-out date
+anywhere in the text — `detail` names what is missing in plain language ("I didn't catch your
+dates — what check-in and check-out are you thinking?") rather than passing through
+`GET /availability`'s generic validation message. The status code and `code` stay
+`400 VALIDATION_FAILED` either way; only the human-readable `detail` differs by origin. The service
+never invents a date to fill the gap.
 
 ### `GET /assistant/health` — Public
 

@@ -53,7 +53,7 @@ These are enforced in CI by an import-linter rule, not by good intentions — se
 | Module | Owns |
 |--------|------|
 | `assistant.py` | The LangGraph retrieval graph and its state. Every node, the single bounded retry edge, and the grading step |
-| `search.py` | Natural language → `GET /availability` parameters, via one structured-output call. **Never** executes the search itself; it produces parameters and hands them to the gateway |
+| `search.py` | Natural language → `GET /availability` parameters, via one structured-output call against the live property list. When a property is named or implied, one `get_availability` call, verbatim envelope passthrough. When none is resolvable, one call **per property**, merged and re-paginated — the response shape never changes, only how many backend calls produce it |
 | `ingestion.py` | `corpus/` → parsed → chunked → embedded → `ai_chunks`. Idempotent per document hash |
 | `evaluation.py` | The RAGAS harness over `eval/golden_set.yaml`; writes `ai_eval_runs` |
 
@@ -71,9 +71,12 @@ service impossible to test without a provider key.
 
 > **This is the chokepoint that enforces the REST-only rule.** It is the most heavily tested module
 > in the service and the first place to look when an answer contains a number that disagrees with
-> the application. Its public surface mirrors the endpoints it wraps — `get_availability`,
-> `get_property`, `get_reservation`, `patch_reservation`, `cancel_reservation` — and it adds no
-> method that composes or derives anything, because deriving is what the backends are for.
+> the application. Its public surface mirrors the endpoints it wraps — `get_properties`,
+> `get_property`, `get_availability`, `get_reservation`, `patch_reservation`,
+> `cancel_reservation` — and it adds no method that composes or derives anything, because deriving
+> is what the backends are for. `get_properties` exists specifically so F2 can resolve a property
+> named or implied in free text ("a room in Burlington") against the **live** property list rather
+> than names baked into a prompt, which would go stale the moment a property is renamed or added.
 
 ---
 

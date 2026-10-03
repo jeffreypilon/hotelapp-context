@@ -15,7 +15,8 @@ is wrong — the same rule the specification repository applies to its own docum
 
 | Layer | May import | May **not** import |
 |-------|-----------|-------------------|
-| `transport/` | `services/`, `domain/`, `config/` | `langchain`, `openai`, `psycopg`, `httpx` |
+| `transport/rest/` | `services/`, `domain/`, `config/` | `langchain`, `openai`, `psycopg`, `httpx` |
+| `transport/mcp/` | `services/`, `domain/`, `config/`, **and `gateways/` directly** | `langchain`, `openai`, `psycopg` |
 | `services/` | `gateways/`, `repositories/`, `domain/`, `config/`, `langchain*` | `fastapi`, `fastmcp`, `authlib` |
 | `gateways/` | `domain/`, `config/`, `httpx` | `repositories/`, `psycopg`, any `langchain*` |
 | `repositories/` | `domain/`, `config/`, `psycopg` | `gateways/`, `httpx`, any `langchain*` |
@@ -23,6 +24,22 @@ is wrong — the same rule the specification repository applies to its own docum
 
 These are enforced in CI by an import-linter rule, not by good intentions — see
 [devops-pipeline.md](./devops-pipeline.md).
+
+> **Design Decision — `transport/mcp/` is allowed to call `gateways/` directly; `transport/rest/`
+> is not.** Found and resolved during AI Step 5, not planned in advance. The REST transport routes
+> every call through `services/` because its routes need a response already shaped by orchestration
+> logic (or none exists, as for pure reads that still go through a service for consistency). Most
+> MCP tools have no orchestration step at all — `list_properties`, `get_property`,
+> `list_room_types` are 1:1 proxies over a single gateway call, and inserting a `services/` module
+> that only forwards the call would be ceremony with no behavior. The one MCP tool that *does* have
+> real logic, `search_availability`'s no-property fan-out, lives in `services/availability.py` as
+> the table above requires — this exception is for pure proxying only, never for anything with
+> actual orchestration in it. The invariant this project actually cares about — **`gateways/hotelapp.py`
+> is the only module that ever calls a backend**, and **no model call happens outside `services/`**
+> — holds either way, which is why the import-linter contract carves out exactly one edge
+> (`gateways.hotelapp -> httpx`) rather than exempting `transport/mcp/` from the `httpx`-forbidden
+> rule generally: `services/llm_client.py`'s own `httpx` import is still caught if `transport/mcp/`
+> ever reaches it.
 
 ---
 

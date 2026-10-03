@@ -2973,7 +2973,7 @@ since this file is long and Phase 9 sits near the end of it.
 | 3 | Hybrid retrieval | ✅ Done | [`AI Step 2`](#ai-step-2--hybrid-retrieval--instructions-for-copilot) — Dense + sparse → RRF → rerank, with the `EXPLAIN` test |
 | 4 | F3 guest assistant | ✅ Done | [`AI Step 3`](#ai-step-3--the-guest-assistant-f3--instructions-for-copilot) — The LangGraph graph, SSE streaming, citations |
 | 5 | F2 natural-language search | ✅ Done | [`AI Step 4`](#ai-step-4--natural-language-availability-search-f2--instructions-for-copilot) — NL → `GET /availability` parameters |
-| 6 | F1 MCP over stdio | ⬜ Not started, not yet detailed | Public tool surface; the Claude Desktop demo |
+| 6 | F1 MCP over stdio | ⬜ Detailed, not started | [`AI Step 5`](#ai-step-5--f1-mcp-over-stdio--instructions-for-copilot) — Public tool surface; the Claude Desktop demo |
 | 7 | OAuth 2.1 AS + MCP over HTTP | ⬜ Not started, not yet detailed | Full tool surface, including the two writes |
 | 8 | Evaluation suite | ⬜ Not started, not yet detailed | Golden set, RAGAS, committed floors, CI gates |
 | 9 | Frontend integration | ⬜ Blocked — see the prerequisite below | Assistant UI in **both** frontends |
@@ -3367,6 +3367,90 @@ the results — an interpretation that silently misreads "two guests" as `numGue
 the fan-out case genuinely merges rows from both properties; the missing-dates case explains itself
 rather than returning a bare validation error; and the service still starts and reports
 `AI_UNAVAILABLE` with no API key.
+
+---
+
+#### AI Step 5 — F1, MCP over stdio — instructions for Copilot
+
+**May also change:** `shared/ai-enablement-overview.md` §6 if a design decision made during this
+step's own build turns out to need a further correction — it was already corrected once during
+design discussion (see below) and this is the kind of step where the written spec and the actual
+screen contract can still disagree.
+
+**Scope.** The public MCP tool surface only, over stdio: `list_properties`, `get_property`,
+`list_room_types`, `search_availability`, `prepare_booking`. No OAuth, no HTTP transport, no
+reservation reads or writes — those are a later step, and stdio is deliberately limited to data
+that is already public
+([ai-enablement-overview.md §6](./ai-enablement-overview.md#6-the-mcp-server)). This step makes
+**no model calls of its own** — every tool is a typed, authorized translation layer over the REST
+contract, nothing more, which is also why it needs no evaluation-suite gate the way Steps 3 and 4
+did.
+
+**Read first.**
+[ai-enablement-overview.md §6](./ai-enablement-overview.md#6-the-mcp-server) in full, including
+both Design Decision callouts — stdio's public-only surface and the S3-not-S4 deep-link
+correction are both load-bearing;
+[module-registry.md's `transport/` table](../stacks/ai-service/module-registry.md#transport--protocol-edges)
+for exactly which file owns what;
+[environment-setup-guide.md §§5–6](../stacks/ai-service/environment-setup-guide.md) for the
+`mcp-stdio` CLI command and the Claude Desktop configuration, both already specified;
+[api-contracts.md's `GET /availability`](./api-contracts.md#get-availability--public) for the
+parameter set `search_availability`'s schema mirrors.
+
+**Build.**
+
+- **`transport/mcp/tools.py` defines all five tools**, each tagged `public` (the four
+  OAuth-gated tools from the full surface table are not built yet — do not stub them). A tool
+  defined anywhere else is a defect per `module-registry.md`.
+- **`search_availability` takes structured arguments directly — it does not call F2's extraction.**
+  An MCP client has already turned the caller's natural language into structured arguments before
+  calling the tool; running our own nano-tier extraction on top would be redundant, and means this
+  tool makes no model call at all. Its schema mirrors `GET /availability`'s parameters:
+  `propertyId` (optional), `checkInDate`, `checkOutDate`, `numGuests`, `roomTypeCode`,
+  `amenityCode`, `rateCategory`, `accessibleOnly`, `minNightlyRate`/`maxNightlyRate`, each
+  constrained to real enum values in the schema itself where `services/search.py` already does so.
+  **The no-property fan-out-and-merge logic is shared, not reimplemented** — factor it out of
+  `services/search.py` into a form both the REST path (after its own extraction) and this tool
+  (with no extraction) can call; it is business logic, not language extraction, so there is no
+  reason for two copies of it to exist.
+- **`get_property` and `list_room_types` take `propertyId`**; `list_properties` takes nothing.
+  All three are thin wrappers over `gateways/hotelapp.py`, no new gateway methods beyond the
+  `get_properties()` Step 4 already added.
+- **`prepare_booking` takes `propertyId`, `roomTypeCode`, `checkInDate`, `checkOutDate`,
+  `numGuests`** and returns a URL into S3 (search results), not S4 — see the corrected design
+  decision in `ai-enablement-overview.md §6`. Build the URL from `HOTELAPP_FRONTEND_BASE_URL`
+  (new config, `environment-setup-guide.md`) plus `/properties/{propertyId}/search` and the same
+  query parameter names `GET /availability` and S3 both already use. No reservation is created;
+  this tool performs no write of any kind.
+- **`transport/mcp/stdio.py`** constructs the stdio server with only the `public`-tagged tools
+  registered. Verify FastMCP's actual current mechanism for this against the installed version —
+  `uv add fastmcp` may resolve a 3.0+ release with a different filtering API than what the library's
+  own documentation showed when this step was designed (transport configuration moved out of the
+  constructor in 3.0, and tag-based filtering may now happen through `server.disable(tags=...)`
+  rather than constructor kwargs). Do not guess from memory; read what actually installed.
+- **A new `hotelapp-ai mcp-stdio` CLI command**, already named in
+  `environment-setup-guide.md §5` — this step is what makes that command real.
+
+**Verify.**
+
+- **An automated test using the official MCP Python SDK's own client**, connecting over the stdio
+  transport exactly as Claude Desktop would: list tools and assert the five expected names and
+  schemas appear and nothing else does (no reservation tools leak onto this surface — that
+  assertion is this step's version of the REST-only grep), then call each tool and assert its
+  response shape. This is the repeatable gate; it replaces a smoke-set file since there is no
+  natural-language extraction in this step to sample.
+- **A hand-verified pass connecting a real MCP client (Claude Desktop) and asking it, in plain
+  language, to find a room and prepare a booking** — configuration exactly as
+  `environment-setup-guide.md §6` already documents. This is the step's actual demo moment and the
+  automated test above cannot substitute for it: confirm the agent discovers the tools unprompted,
+  calls them with sensible arguments, and that the `prepare_booking` link it returns actually opens
+  S3 pre-filled with the right search when clicked.
+
+**Done means:** the automated MCP-client test passes and proves exactly five tools are exposed,
+no more; a real Claude Desktop session, run by hand, finds a room and receives a working
+`prepare_booking` link; the link opens S3 with the dates, guest count, and room type pre-filled;
+and nothing in this step required a Docker rebuild — stdio runs natively, launched by the client
+itself, same as `environment-setup-guide.md §6` already specifies.
 
 ---
 

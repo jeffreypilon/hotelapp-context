@@ -295,7 +295,17 @@ Profile and password tools are deliberately omitted from the first cut.
 > hands a ready-to-pay link to the guest, who completes payment in the first-party UI. The
 > handoff *is* the demonstration.
 
-The link targets the existing parameterized booking route, so no frontend change is required.
+> **Design Decision — the link targets S3 (search results), not S4 (booking summary).**
+> S4 (`/properties/:propertyId/book`) renders state carried from S3's in-app navigation, not URL
+> parameters — [ui-specifications.md](../stacks/react/ui-specifications.md#s4--booking-summary)
+> is explicit that it has no query-parameter entry point. S3 (`/properties/:propertyId/search`) is
+> the one screen whose full state lives in the URL and is shareable, using the same parameter
+> names as `GET /availability`. So `prepare_booking` links to S3 with the check-in/check-out
+> dates, guest count, and `roomTypeCode` pre-filled to the one room type it found — landing the
+> guest one click ("Select room") from the real booking flow, not literally inside it. This was
+> caught during AI Step 5's design discussion, by checking the claim below against the actual
+> screen contract rather than assuming it. It still requires no frontend change: S3 already reads
+> every one of these parameters from the URL today.
 `cancel_reservation` and `modify_reservation` remain real, consequential writes against real
 business rules, so the write surface is not theatre.
 

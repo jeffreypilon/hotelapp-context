@@ -409,10 +409,27 @@ the "a reviewer needs only Docker" property established in Phase 8.
 
 | Role | Default | Rationale |
 |------|---------|-----------|
-| Chat / generation | OpenAI | Jeff holds a key; strong structured-output support for F2's parameter extraction |
+| Generation — the answer the guest reads | **GPT-5.4 mini** | Classification-shaped calls below use the cheaper tier; this is the one output a guest sees, so it is worth the better model |
+| Query rewrite, retrieval grading | **GPT-5.4 nano** | Both are classification-shaped decisions, not prose — production retrieval-grading implementations (Corrective RAG, Adaptive RAG) commonly use a small model for exactly this, at roughly a third nano's cost of mini |
 | Embeddings | `text-embedding-3-small` | $0.02/1M tokens — this corpus costs cents to embed. Upgrade to `-3-large` only if the golden set shows retrieval is the bottleneck |
 | Reranking | Local open-source cross-encoder | No major provider sells a reranker on this key; running it locally keeps the offline path intact and the per-query cost at zero |
 | Offline fallback | Ollama | Weaker, slower, free, and sufficient to prove the architecture does not depend on a vendor |
+
+**Per-call ceilings**: `max_tokens ≈ 500` for generation (a few paragraphs plus citations — grading
+and rewrite need far fewer and are capped tighter in practice), **timeout ≈ 10s per model call**.
+This is a kill-switch ceiling for a genuinely hung call, not the latency target — the 6s p95
+*target* for a complete answer in [§10](#10-non-functional-targets) is the number this is measured
+against.
+
+> **Design Decision — retrieval grading is an LLM call, not a similarity threshold, and this was
+> the original design, not a late addition.** `module-registry.md` already specifies
+> `prompts/grade_retrieval.md` and `coding-standards.md` already names grading among the places a
+> model's output feeds code. The reasoning is concrete, not theoretical: a score threshold rewards
+> topic overlap even when a chunk does not answer the question — exactly the failure AI Step 2
+> found by hand, where an untuned reranker placed an unrelated breakfast-hours chunk ahead of the
+> actual pet-policy answer. A small model asked "does this actually answer the question" catches
+> that; a number does not. Because the task is classification-shaped, it uses the nano tier above,
+> not the tier reserved for guest-facing prose.
 
 Switching provider must not require a rebuild — configuration only, matching the precedent set
 by the frontends' runtime `config.js` mechanism.

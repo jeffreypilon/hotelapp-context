@@ -3226,39 +3226,69 @@ table.
 
 **May also change:** nothing outside `hotelapp-ai-service`.
 
-**Scope.** The LangGraph graph, SSE streaming, citations. The first step with a model call in it.
+**Scope.** The LangGraph graph, SSE streaming, citations, a manual-verification CLI, and a small
+smoke-test question set. The first step with a model call in it. **Corpus-grounded answers only —
+no backend calls, no reservation awareness.** A guest asking about their own reservation through
+the assistant is not this step; it is tracked as a future enhancement, not built here, and not
+tested here. (If you find yourself adding a call to `gateways/hotelapp.py` in this step, stop —
+that is a scope violation.)
 
 **Read first.**
 [ai-enablement-overview.md §7](./ai-enablement-overview.md#7-retrieval-architecture) for the graph
-shape; [error-handling.md](../stacks/ai-service/error-handling.md) in full — **mid-stream failure
-is the part that is easy to get wrong**;
+shape and [§11](./ai-enablement-overview.md#11-provider-and-model-selection) for the model tiers
+and per-call ceilings — both sections were revised after this step was first drafted, so re-read
+even if you read them before; [error-handling.md](../stacks/ai-service/error-handling.md) in full
+— **mid-stream failure is the part that is easy to get wrong**;
 [coding-standards.md](../stacks/ai-service/coding-standards.md#writing-code-around-a-language-model);
-[security-implementation.md](../stacks/ai-service/security-implementation.md).
+[security-implementation.md](../stacks/ai-service/security-implementation.md);
+[module-registry.md](../stacks/ai-service/module-registry.md) for the fixed citation format and
+the `prompts/` file list.
 
 **Build.**
 
 - The graph exactly as the specification draws it, so the diagram and the code can be diffed by
   eye.
-- **The retry edge is bounded in code, not in the prompt.** The counter lives in graph state and
-  the conditional edge reads it; the model is never asked whether it should try again. Assert that
-  a forced-insufficient grade terminates after exactly two retrieval passes.
+- **Grading is a model call, not a threshold.** This was the original design —
+  `module-registry.md` already named `prompts/grade_retrieval.md` — not a new requirement. Use the
+  **nano** tier: the task is classification-shaped ("does this context answer the question,
+  yes/no"), not prose generation. A similarity threshold was considered and rejected: it rewards
+  topic overlap even when a chunk does not answer the question, which is exactly the failure Step
+  2 found by hand (an unrelated breakfast-hours chunk outscoring the real pet-policy answer).
+- **The retry *count* is still bounded in code, not in the prompt**, even though grading itself now
+  calls a model. The counter lives in graph state and the conditional edge reads it; the model
+  grades relevance, it never decides how many attempts remain. Assert that a forced-insufficient
+  grade terminates after exactly two retrieval passes.
+- **Model tiers, per [§11](./ai-enablement-overview.md#11-provider-and-model-selection):** GPT-5.4
+  mini for generation, GPT-5.4 nano for query rewrite and for grading. `max_tokens ≈ 500` for
+  generation; a 10s per-call timeout is a hung-call kill switch, not the latency target.
 - Prompts as **files** in `prompts/`. Retrieved text is fenced and labelled as data, never
   interpolated into an instruction.
+- `domain/citations.py` renders the fixed numbered-footnote format from `module-registry.md` —
+  `[1] Document Title — Section heading` — matching the order citations are emitted as events.
 - SSE with `token`, `citation`, and `done`. A failure after the first byte is a **terminal `error`
   event**, never a truncated stream — a stream that just stops is indistinguishable from a network
   drop.
 - Every model call bounded: explicit `max_tokens`, timeout, retry policy. Record prompt tokens,
   completion tokens and **cost** on the `done` event and in the request log line.
+- **A `hotelapp-ai ask "<question>"` CLI command**, mirroring Step 2's `retrieve` exactly, printing
+  the streamed tokens and citations to the terminal. There is no frontend yet — item 9 is blocked
+  on both copies of `ui-specifications.md` gaining these screens — so this CLI is how this step
+  gets verified by hand, the same way `retrieve` was Step 2's.
+- **A committed smoke-test set of 10–15 questions** (not RAGAS — that is item 8's own, larger,
+  scored suite). One question per major corpus document, plus two specific cases that must be in
+  it: the pet-policy question Step 2 found troublesome ("Can I bring my dog?"), and the 48-hour
+  cancellation worked example from the policy-consistency rule. This is eyeballed on every change
+  to this step's code, not scored — its job is to stop "I asked it two questions and they looked
+  fine" from recurring a second time.
 
-**Verify by hand, in a browser, not only in pytest.** Ask a question whose answer is in the corpus
+**Verify by hand, with the CLI, not only in pytest.** Ask a question whose answer is in the corpus
 and confirm the citation names the right document *and section*. Ask one whose answer is not, and
-confirm it declines rather than inventing. Ask about a guest's own reservation with and without a
-session, and confirm the difference comes from the backend's authorization rather than from the
-model's judgement.
+confirm it declines rather than inventing. Run the full smoke set and read every answer — this is
+the step that first makes generation quality visible, and nothing in pytest can see quality.
 
 **Done means:** a cited, streamed answer in under 1.5s to first token; a mid-stream failure arrives
-as a terminal event; cost is recorded per request; and the service still starts and reports
-`AI_UNAVAILABLE` with no API key.
+as a terminal event; cost is recorded per request; the smoke set has been run and read, not just
+executed; and the service still starts and reports `AI_UNAVAILABLE` with no API key.
 
 ---
 

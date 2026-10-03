@@ -110,6 +110,17 @@ no model, no randomness.
 Each ships with unit tests in the same commit, per the standing rule both frontend repos adopted
 after Phase 7 — new pure logic with non-obvious behaviour is not exempt because it is small.
 
+**`citations.py`'s output format is fixed**, so the SSE contract and a future frontend have a
+stable target rather than an implicit one: a numbered footnote per citation, document title, then
+the specific section —
+
+```
+[1] Cancellation and Rate-Type Policy — The standard cancellation window
+```
+
+The number matches the order citations are emitted as `citation` events during the stream, so a
+client can render footnote markers inline without re-deriving the association itself.
+
 ---
 
 ## `prompts/` — versioned as files

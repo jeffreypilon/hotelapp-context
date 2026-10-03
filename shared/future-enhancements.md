@@ -161,6 +161,31 @@ how this feature becomes a liability:
 
 ---
 
+## 5. Guest reservation awareness inside the F3 assistant
+
+**Deferred from:** AI Step 3's design discussion.
+
+F3 as built answers from the document corpus only — policy, house rules, amenities, directions.
+It does not call `gateways/hotelapp.py` and has no notion of "my reservation." A guest who asks the
+assistant "when do I check in" gets the general policy answer, not their own booking's dates.
+
+**Why deferred:** it is distinct from F4 in [ai-enablement-overview.md §2](./ai-enablement-overview.md#2-scope)
+(staff viewing *any* guest's reservations, blocked on an admin UI) — this would be a guest viewing
+their *own* reservation through the assistant instead of the existing account screens. Its value is
+genuinely modest: a guest can already see their own reservation in the UI without invoking AI at
+all, so this is a convenience layer on an already-solved problem rather than new capability. Adding
+it to Step 3 would also have meant building a tool-calling branch into the graph that Step 3's own
+verification text implied but never specified — caught during the Step 3 design discussion rather
+than built un-designed.
+
+**If revisited:** this is additive to the existing graph, not a redesign — a new tool node calling
+`gateways/hotelapp.py` with the caller's forwarded session, gated the same way MCP's reservation
+tools already are (session required, backend's own authorization applies unchanged). The interesting
+design question is UX, not architecture: how the assistant should ask the guest to confirm which
+reservation they mean, if they hold more than one.
+
+---
+
 ## Not here: open questions that block Phase 9
 
 One item discussed alongside these is **not** a future enhancement and is deliberately not

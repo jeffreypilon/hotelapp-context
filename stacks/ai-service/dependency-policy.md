@@ -50,6 +50,7 @@ Versions pinned exactly. Transitive resolution is frozen by `uv.lock`.
 | `authlib` | OAuth 2.1 authorization server | Protocol primitives from a vetted library, not hand-rolled |
 | `sentence-transformers` | Local cross-encoder reranker | Runs on CPU; keeps reranking free and offline |
 | `pypdf` | Corpus ingestion | Reading the PDFs in `corpus/` |
+| `fpdf2`, `pillow` (dev group) | Corpus rendering | Build-time only — `scripts/render_corpus.py` and `scripts/make_figures.py` turn the Markdown corpus into the PDFs `pypdf` reads. Not imported by `src/`, so they never ship in the runtime image |
 | `ragas` | Evaluation | [testing-standards.md](./testing-standards.md) |
 | `langfuse` | Tracing | Self-hosted; optional at runtime |
 | `structlog` | Structured logging | [logging-observability.md](./logging-observability.md) |

@@ -1288,7 +1288,7 @@ search, and returns both.
     "propertyId": "0192f3a5-…",
     "checkInDate": "2026-10-10",
     "checkOutDate": "2026-10-12",
-    "guests": 2,
+    "numGuests": 2,
     "maxNightlyRate": "300.00",
     "amenityCode": "REFRIGERATOR",
     "rateCategory": "AAA_CAA"

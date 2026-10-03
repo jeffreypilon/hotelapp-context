@@ -24,7 +24,7 @@ part, and doing it on paper is enormously cheaper than doing it in four codebase
 | 6 | Backend implementation | ⬜ **In progress** — Steps 0-6 done for both backends; **Node's guest-facing slice (Phase 6 items 1-8) is now complete, the same milestone Spring Boot reached at its own Step 6.** Admin/reporting/cross-cutting (items 9-12) deferred for both backends — see the design decision before Phase 7 |
 | 7 | Frontend implementation | ⬜ **In progress** — React's entire guest-facing slice (Steps 1-7, items 1-6) is done and verified against live Spring Boot. Angular Steps 1-4 (foundation, property detail/room types, search/results, and auth/route guards, S1-S3 + S5) are now done too, against live Node (Step 4 also cross-verified against live Spring Boot for AC-SE-05). **Paused here at Jeff's explicit instruction (2026-09-27)** rather than proceeding straight to Node per the original sequencing — see the design decision below for what "next" meant before the pause |
 | 8 | Integration, smoke test, polish | ⬜ **Partly done** — the single-backend "just run it" Compose stack (item 2) is built and verified across all four frontend/backend combinations. The two-backend smoke test (item 1), bulk seed data (item 3) and per-repo READMEs (item 5) remain |
-| 9 | AI enablement — `hotelapp-ai-service` | ⬜ **Specified, not started.** Design in [ai-enablement-overview.md](./ai-enablement-overview.md), ten documents in `stacks/ai-service/`, the AI migration written and verified, the 16-document corpus authored. Steps 0–3 have detailed instructions; 4–8 are committed in scope but deliberately not yet detailed |
+| 9 | AI enablement — `hotelapp-ai-service` | ⬜ **In progress** — `AI Step`s 0–4 done and verified (walking skeleton, ingestion, hybrid retrieval, the F3 guest assistant, F2 natural-language search). See [the Phase 9 item table](#phase-9--ai-enablement-) for status per item and a link to each step's detailed instructions. Items 6–8 (MCP, OAuth, evaluation suite) are committed in scope but deliberately not yet detailed — see ["How these steps are written"](#how-these-steps-are-written) |
 
 ---
 
@@ -2959,18 +2959,30 @@ accidentally:
 3. **It is strictly additive.** Every existing acceptance criterion must still pass with this
    service stopped, and the four Phase 8 Compose combinations must still run **without an API key**.
 
-| # | Item | Notes |
-|---|------|-------|
-| 1 | Walking skeleton | FastAPI up, `/health`, one real REST call to a backend, running under Compose |
-| 2 | AI schema applied, repositories, corpus ingestion | Corpus → chunks → embeddings → `ai_chunks` |
-| 3 | Hybrid retrieval | Dense + sparse → RRF → rerank, with the `EXPLAIN` test |
-| 4 | F3 guest assistant | The LangGraph graph, SSE streaming, citations |
-| 5 | F2 natural-language search | NL → `GET /availability` parameters |
-| 6 | F1 MCP over stdio | Public tool surface; the Claude Desktop demo |
-| 7 | OAuth 2.1 AS + MCP over HTTP | Full tool surface, including the two writes |
-| 8 | Evaluation suite | Golden set, RAGAS, committed floors, CI gates |
-| 9 | Frontend integration | Assistant UI in **both** frontends — see the prerequisite below |
-| 10 | Compose and docs | `--profile ai`, the pgvector image swap, README |
+**Table note — the item number and the `AI Step` number are not the same thing**, and that
+mismatch is a real source of confusion, not a quirk to memorize: item 1 is `AI Step 0`, item 5 is
+`AI Step 4`, and so on, offset by one because step numbering starts at 0. Search for the literal
+`AI Step N` label in the rightmost column, not the item number, and follow its link straight to
+the detailed instructions further down this same document — they are easy to miss by scrolling,
+since this file is long and Phase 9 sits near the end of it.
+
+| # | Item | Status | Detailed instructions |
+|---|------|--------|------------------------|
+| 1 | Walking skeleton | ✅ Done | [`AI Step 0`](#ai-step-0--walking-skeleton--instructions-for-copilot) — FastAPI up, `/health`, one real REST call to a backend, running under Compose |
+| 2 | AI schema applied, repositories, corpus ingestion | ✅ Done | [`AI Step 1`](#ai-step-1--migrations-repositories-and-corpus-ingestion--instructions-for-copilot) — Corpus → chunks → embeddings → `ai_chunks` |
+| 3 | Hybrid retrieval | ✅ Done | [`AI Step 2`](#ai-step-2--hybrid-retrieval--instructions-for-copilot) — Dense + sparse → RRF → rerank, with the `EXPLAIN` test |
+| 4 | F3 guest assistant | ✅ Done | [`AI Step 3`](#ai-step-3--the-guest-assistant-f3--instructions-for-copilot) — The LangGraph graph, SSE streaming, citations |
+| 5 | F2 natural-language search | ✅ Done | [`AI Step 4`](#ai-step-4--natural-language-availability-search-f2--instructions-for-copilot) — NL → `GET /availability` parameters |
+| 6 | F1 MCP over stdio | ⬜ Not started, not yet detailed | Public tool surface; the Claude Desktop demo |
+| 7 | OAuth 2.1 AS + MCP over HTTP | ⬜ Not started, not yet detailed | Full tool surface, including the two writes |
+| 8 | Evaluation suite | ⬜ Not started, not yet detailed | Golden set, RAGAS, committed floors, CI gates |
+| 9 | Frontend integration | ⬜ Blocked — see the prerequisite below | Assistant UI in **both** frontends |
+| 10 | Compose and docs | ⬜ Not started, not yet detailed | `--profile ai`, the pgvector image swap, README |
+
+Items 6–8 have no `AI Step N` link yet because they have not been written in the step-by-step
+Copilot-instruction format items 1–5 are — deliberately: see
+["How these steps are written"](#how-these-steps-are-written) below for why detailing a step
+before its predecessor's outcome is known would mean inventing it.
 
 **Done means:** a reviewer with Docker and an API key can ask the assistant a policy question and
 get a cited answer; can search in plain language and get real availability; and can connect Claude

@@ -226,7 +226,7 @@ people, not for day-to-day work — rebuilding a container to see a code change 
 experience than either framework's hot reload.
 
 ```
-PostgreSQL 18.6   native, localhost:5432, database `dev`
+PostgreSQL 18.6   native, localhost:5432, database `hotelapp`
 Migrations        Flyway against hotelapp-context/shared/migrations/
 Backend           one of the two — :3000 (Node) or :8080 (Spring)
 Frontend          one of the two — Vite or ng serve, proxying /api to the backend

@@ -15,6 +15,16 @@ frontend, against which backend) is a cross-cutting concern none of the four rep
 > outcome records a live click-through against a running backend, including Step 4's cross-backend
 > `public/config.js`-switch walkthrough this document's "Pointing Angular at a backend" section
 > describes below.
+>
+> **2026-10-09**: added the AI service (hybrid native-plus-Docker startup, since `pgvector` has no
+> stock Windows-native path), a start-to-finish demo sequence, and a shutdown sequence — written up
+> after a real ~20-minute struggle getting all services running for a demo, so the actual root
+> causes (Docker Desktop not yet running, a non-obvious Compose invocation, two databases with two
+> different passwords) are captured here rather than left to be rediscovered the same way again.
+> That manual sequence is now also automated as `scripts/services.ps1` — start, stop, or check the
+> status of any combination of services in one command, verified by actually running every path
+> (including a real Start-Process argument-quoting bug on Windows PowerShell 5.1, caught and fixed
+> rather than shipped).
 
 ---
 
@@ -170,6 +180,136 @@ throws, rather than silently calling nowhere) — but that file needs a dev-serv
 effect, the same restart React's `.env.local` needs. **`public/config.js` is the file to edit for a
 quick backend switch; `environment.development.ts` is only the fallback default.**
 
+## Starting the AI service
+
+Optional — only needed when a demo uses the AI policy assistant, not for the base booking flow.
+From `hotelapp-ai-service`.
+
+**Hard dependency: the `vector` extension.** The AI schema needs PostgreSQL's `pgvector`
+extension, which the stock Windows PostgreSQL 18 install does not ship and which is impractical
+to compile natively on Windows (needs MSVC) — see §1 of
+[stacks/ai-service/environment-setup-guide.md](../stacks/ai-service/environment-setup-guide.md).
+The practical answer is **not** to containerize the whole AI service — only its database and
+migrations, from `hotelapp-context/docker`:
+
+```powershell
+cd <path to>\hotelapp-context\docker
+docker compose --profile ai up -d db flyway flyway-ai
+```
+
+This is a **different** invocation from the five fully-containerized combinations documented at
+the top of `docker-compose.yml` (`--profile react --profile spring --profile ai`, etc.) — naming
+the three infrastructure services directly brings up only a pgvector-enabled Postgres on `:5433`
+and applies both the business schema and the AI schema to it, while Spring Boot, the frontend, and
+the AI service itself all keep running natively. The command blocks until `db` is healthy and both
+Flyway runs have exited `0`, so by the time it returns the database is actually ready — no
+separate wait needed. This recipe wasn't written down anywhere before 2026-10-09; it had to be
+rediscovered by trial, which is why it's here now.
+
+**Docker Desktop must already be running** before this command — if it isn't,
+`docker compose` fails with
+`failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`. Docker Desktop
+itself can take several minutes to fully start after being launched; start it *before* you need
+it, not as the first step of a time-boxed demo.
+
+Then, from `hotelapp-ai-service`:
+
+```powershell
+uv run hotelapp-ai serve
+```
+
+`:8000`. Confirm it's actually healthy, including its view of the backend:
+
+```powershell
+curl http://localhost:8000/api/v1/assistant/health
+```
+
+**Start the AI service last, after confirming the real backend already answers
+`GET /properties`.** Its health check reports `backend` separately from its own status — a
+`"backend":"DOWN"` result means the Spring Boot/Node backend isn't actually reachable; go back and
+fix *that*, not the AI service.
+
+The native database (`:5432`, password `password`) and the Docker one (`:5433`, password
+`postgres`) are genuinely different credentials on purpose — see §1 of
+[stacks/ai-service/environment-setup-guide.md](../stacks/ai-service/environment-setup-guide.md)
+before assuming a connection failure means something is broken.
+
+## Running everything for a demo, start to finish
+
+**As of 2026-10-09, this is automated: `scripts/services.ps1` in this repo.** It encodes
+everything below — the order, the health-check waiting, the JAVA_HOME/Maven override, the Docker
+Desktop wait, the AI-service backend-readiness check — so starting, stopping, or checking any
+combination of services is one command instead of re-deriving the steps each time:
+
+```powershell
+cd hotelapp-context\scripts
+.\services.ps1 start -All                                    # postgres + Spring Boot + React + AI
+.\services.ps1 start -Services react,angular,springboot      # both frontends side by side, one backend
+.\services.ps1 status                                        # what's actually running, with live health checks
+.\services.ps1 stop -All                                     # stops everything it's safe to stop (see below)
+```
+
+Pass `-Visible` to `start` to open each service in its own labeled, visible terminal window you
+can tile on screen — useful for actually showing backend request/response logs live during a
+demo, which hidden (the default) background processes can't do. `services.ps1 start -?` (or just
+reading the script's own comment header) lists every option and example, including picking the
+other backend/frontend (`-Backend nodejs -Frontend angular`).
+
+The manual sequence below is what the script *does* — read it if something needs debugging, or if
+you're on a machine without this script. In this order; confirm each step is actually up (via its
+own health check) before starting the next — starting steps out of order, or not waiting for one
+to finish, is the most common cause of a slow, confusing startup.
+
+1. **PostgreSQL** (native service) — already running as a Windows service; confirm with
+   `Get-Service postgresql-x64-18`.
+2. **If the AI service is part of the demo**: Docker Desktop, then
+   `docker compose --profile ai up -d db flyway flyway-ai` (see "Starting the AI service" above).
+   Skip this step entirely if the demo doesn't need the AI assistant.
+3. **One backend** — Spring Boot or Node.js (see "Starting a backend" above). Confirm with its
+   `/health` endpoint before moving on.
+4. **One frontend** — React or Angular (see "Pointing React/Angular at a backend" above). No
+   ordering dependency on the backend being up first, but there's nothing to demo yet without it.
+5. **The AI service**, last, only if needed (see above) — its own health check is the first place
+   that will reveal whether an earlier step didn't actually finish.
+
+Budget real time for step 2 specifically if it's needed and Docker Desktop wasn't already
+running — that single step, including Docker Desktop's own startup time, is the most likely
+source of an unexpectedly long wait before a demo.
+
+## Stopping everything, cleanly
+
+**`.\services.ps1 stop -All`** does this: stops every app process it's safe to stop, leaves
+native PostgreSQL running (shared system service), and leaves the AI service's Docker containers
+up (`aidb` — so the next `start` doesn't re-migrate from scratch). Tear those down explicitly,
+only when actually done with the AI service for a while, with `.\services.ps1 stop -Services aidb`.
+
+The manual sequence, roughly the reverse of startup order, so nothing is left holding a port the
+next session needs:
+
+1. **AI service** — `Ctrl+C` in its terminal.
+2. **Frontend(s)** — `Ctrl+C` in their terminal(s).
+3. **Backend(s)** — `Ctrl+C` in their terminal(s).
+4. **Only if step 2 of "Running everything for a demo" was used** — the AI-only Docker containers:
+   ```powershell
+   cd <path to>\hotelapp-context\docker
+   docker compose --profile ai down
+   ```
+   `down` (no `-v`) stops and removes the `db`/`flyway`/`flyway-ai` containers but **keeps** the
+   named `pgdata` volume, so the next startup reuses the same data rather than re-migrating from
+   scratch. Only add `-v` if you deliberately want to wipe it.
+
+**Native PostgreSQL is not part of this shutdown** — it's a persistent Windows service, not a
+per-demo process; leave it running.
+
+> **If an AI coding assistant is driving your terminals for you** (rather than you running each
+> command in your own terminal windows), one more failure mode is worth knowing: some assistants
+> share a small pool of background shells and silently evict the oldest one when a new one is
+> opened, which can kill an already-running dev server with no application-level error at all —
+> the only symptom is the port suddenly refusing connections. This is not a HotelApp defect and
+> won't happen if you're running the processes yourself in ordinary terminals; it only matters when
+> something else is orchestrating three or more long-running processes through one shared shell
+> pool.
+
 ## Troubleshooting
 
 | Symptom | Cause |
@@ -182,3 +322,7 @@ quick backend switch; `environment.development.ts` is only the fallback default.
 | Spring Boot fails to start or build with an "unsupported class file version" / release-version error | `JAVA_HOME` points at a newer JDK than `pom.xml`'s `<java.version>` pins. Set `JAVA_HOME` to a JDK matching that pin for the session before running `mvn` — don't assume the system default JDK is the right one |
 | Edited `public/config.js` in `hotelapp-client-angular` but the app still calls the old backend | Either the browser tab wasn't reloaded (no dev-server restart is needed, but a reload is), or `src/environments/environment.development.ts` was edited instead — that file is only the fallback used when `public/config.js` is missing/empty, and it *does* need a dev-server restart to take effect, the same restart React's `.env.local` needs. `public/config.js` is the one to edit for a quick switch |
 | Angular's `ng serve` fails to start because port `4200` is already in use | A previous `ng serve` (or another Angular project) is still holding the port. `Get-NetTCPConnection -LocalPort 4200 -State Listen` to find it, same check as the stray-Vite-process symptom above |
+| `docker compose` fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` | Docker Desktop isn't running. Launch it and wait — it can take several minutes to fully start, which is easy to mistake for the command itself hanging |
+| The AI service's health check reports `"backend":"DOWN"` | The real backend (Spring Boot or Node) isn't actually reachable. Re-check that backend, not the AI service — this is a downstream symptom, not the root cause |
+| A connection to either database fails with a password error | `:5432` (native) and `:5433` (Docker) use **different** passwords on purpose — see §1 of [stacks/ai-service/environment-setup-guide.md](../stacks/ai-service/environment-setup-guide.md). A failure against one almost always means the other's credentials were used by mistake |
+| The fully-containerized demo stack (`docker compose --profile <frontend> --profile <backend> up`) fails to bind `:8080` | A stray exited container from an earlier run may still hold the name. `docker ps -a` to find it, `docker rm` it before retrying — one such container (`hotelapp-api-spring-1`) was found sitting unused on this machine on 2026-10-09 |

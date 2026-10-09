@@ -3,9 +3,9 @@
 Index of this repository. Start here to find which document decides what.
 
 `hotelapp-context` holds specifications only — no application code. It is read by human
-developers and by coding agents working in the four implementation repos:
+developers and by coding agents working in the five implementation repos:
 `hotelapp-client-react`, `hotelapp-client-angular`, `hotelapp-server-nodejs`,
-`hotelapp-server-springboot`.
+`hotelapp-server-springboot`, `hotelapp-ai-service`.
 
 **Every decision lives in exactly one document.** Others cross-reference it. If two documents
 appear to decide the same thing, one is stale — treat that as a bug.
@@ -59,7 +59,7 @@ Those three are the project. Everything else elaborates them.
 | `stacks/angular/` | ✅ **Written** (Phase 3) — 12 documents |
 | `stacks/nodejs/` | ✅ **Written** (Phase 4) — 10 documents |
 | `stacks/springboot/` | ✅ **Written** (Phase 4) — 10 documents |
-| `stacks/ai-service/` | ✅ **Written** (Phase 9) — same 10 documents. Design decided in [shared/ai-enablement-overview.md](./shared/ai-enablement-overview.md); **no code exists yet**, so its `environment-setup-guide.md` commands are specified but unvalidated |
+| `stacks/ai-service/` | ✅ **Written** (Phase 9) — same 10 documents. Design decided in [shared/ai-enablement-overview.md](./shared/ai-enablement-overview.md). **Built and running** as of 2026-10-02 (`hotelapp-ai-service`) — this line is stale as of 2026-10-09 if it still says otherwise; its `environment-setup-guide.md` commands are now verified, not just specified |
 
 **All 44 stack documents are written.** See
 [phased-implementation-plan.md](./shared/phased-implementation-plan.md) for what each phase
@@ -126,6 +126,7 @@ requirement. It may not restate or contradict the requirement.
 | Understand the 48-hour rule | project-overview § Business Rules, data-model § Cancellation policy, acceptance-criteria § 2 |
 | Write tests | acceptance-criteria, then the stack's `testing-standards.md` |
 | Set up a repo | The stack's `environment-setup-guide.md`, devops-pipeline-overview |
+| Run or demo the whole stack (start/stop any combination of services) | `scripts/services.ps1`, local-integration-guide |
 | Name something | glossary-of-conventions; domain-glossary for the concept itself |
 | Judge scope | project-overview, plus the "deliberately absent" sections of architecture-overview, security-principles, and devops-pipeline-overview |
 

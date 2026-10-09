@@ -114,6 +114,14 @@ someone the link".
 **Authorization is the server's.** Route guards and hidden controls are UX only. Every screen
 assumes its guard can be bypassed and relies on the API to refuse.
 
+**Brand color.** The header background and every primary action button ("Check availability",
+"Save changes", "Continue to payment", etc.) use the GM blue `#0671d8` (hover shade: `#055aad`),
+matching `General_Motors_(2021).svg`. Each client defines this once, as a Tailwind v4 `@theme`
+token in its single CSS entrypoint, and every component references it as `bg-brand` /
+`hover:bg-brand-hover` — never a hard-coded hex. A screen that invents its own blue, or falls back
+to a Tailwind default like `blue-600`, is a defect, the same as unlabeled enum text leaking into UI
+copy above.
+
 ---
 
 ## 2. Screen specifications
